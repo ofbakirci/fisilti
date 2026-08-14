@@ -1,0 +1,11 @@
+# dağıtım çıktıları ve İMZA ANAHTARI — asla repoya girmez
+dist/
+
+# derlenmiş motor (release asset'i olarak dağıtılır; build-whisper.sh ile üretilir)
+bin/whisper-cli
+
+# oturum/araç artıkları
+.claude/
+.DS_Store
+*.log
+node_modules/

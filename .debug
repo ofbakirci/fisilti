@@ -1,0 +1,7 @@
+<ExtensionList>
+  <Extension Id="com.ofb.fisilti.panel">
+    <HostList>
+      <Host Name="PPRO" Port="8090"/>
+    </HostList>
+  </Extension>
+</ExtensionList>

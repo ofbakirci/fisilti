@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<title>Fısıltı</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="app">
+
+  <div id="topbar">
+    <div class="logo">Fısıltı<span>.</span></div>
+    <div id="seq-info">sequence bekleniyor…</div>
+    <button class="btn small" id="btn-refresh" title="Sequence bilgisini yenile">⟳</button>
+  </div>
+
+  <div id="tabs">
+    <button class="active" data-tab="transcribe-page">Transkript</button>
+    <button data-tab="caption-page">Altyazı &amp; Stil</button>
+    <button data-tab="models-page">Modeller</button>
+    <button data-tab="settings-page">Ayarlar</button>
+  </div>
+
+  <!-- ===================== TRANSKRİPT ===================== -->
+  <div class="tab-page active" id="transcribe-page">
+    <div class="row">
+      <label class="field"><span>Kaynak</span>
+        <select id="transcribe-range">
+          <option value="sequence">Tüm sequence</option>
+          <option value="inout">In–Out aralığı</option>
+          <option value="selection">Seçili klip(ler)</option>
+        </select>
+      </label>
+      <label class="field"><span>Model</span>
+        <select id="model-select"></select>
+      </label>
+    </div>
+    <div class="row">
+      <label class="field"><span>Dil</span>
+        <select id="lang-select">
+          <option value="auto">Otomatik</option>
+          <option value="tr" selected>Türkçe</option>
+          <option value="en">İngilizce</option>
+          <option value="de">Almanca</option>
+          <option value="fr">Fransızca</option>
+          <option value="es">İspanyolca</option>
+          <option value="ar">Arapça</option>
+          <option value="ru">Rusça</option>
+        </select>
+      </label>
+      <label class="field"><input type="checkbox" id="opt-translate"> İngilizceye çevir</label>
+      <span style="flex:1"></span>
+      <button class="btn primary" id="btn-transcribe">Transkribe Et</button>
+      <button class="btn danger" id="btn-cancel" style="display:none">Durdur</button>
+    </div>
+
+    <div class="row" id="transcript-toolbar">
+      <input type="text" id="search-box" placeholder="Ara…">
+      <span id="search-count" class="hint"></span>
+      <button class="btn small" id="btn-search-prev" title="Önceki">↑</button>
+      <button class="btn small" id="btn-search-next" title="Sonraki">↓</button>
+    </div>
+    <div class="row">
+      <label class="field" title="Playhead ilerledikçe transkript kendini kaydırır">
+        <input type="checkbox" id="opt-follow" checked> Playhead'i takip et</label>
+      <label class="field" title="Transkripti kaydırdıkça video o ana gider">
+        <input type="checkbox" id="opt-scrollseek"> Scroll → videoyu sardır</label>
+      <label class="field" title="Konuşulan kelimeyi renklendir">
+        <input type="checkbox" id="opt-wordhl" checked> Kelime vurgusu</label>
+    </div>
+
+    <div id="transcript">
+      <div class="empty">
+        Henüz transkript yok.<br>
+        Yukarıdan modelini seç, <b>Transkribe Et</b>'e bas.<br><br>
+        <span class="hint">İpucu: satıra tıkla → video o ana gider. Çift tıkla → metni düzenle.<br>
+        Segmentleri birleştirmek için düzenlerken satır sonunda Delete'e bas.</span>
+      </div>
+    </div>
+
+    <div class="row">
+      <button class="btn small" id="btn-export-srt">SRT</button>
+      <button class="btn small" id="btn-export-vtt">VTT</button>
+      <button class="btn small" id="btn-export-txt">TXT</button>
+      <button class="btn small" id="btn-export-csv">CSV</button>
+      <span style="flex:1"></span>
+      <button class="btn small" id="btn-add-markers" title="Her segmenti sequence marker'ı olarak ekle">Marker'lara dök</button>
+    </div>
+  </div>
+
+  <!-- ===================== ALTYAZI & STİL ===================== -->
+  <div class="tab-page" id="caption-page">
+    <div id="style-preview"><div class="pv-caption">Böyle görünecek —<br>altyazı önizlemesi</div></div>
+
+    <div class="section-title">Stil</div>
+    <div class="grid2">
+      <label class="field"><span>Font</span>
+        <select id="st-font">
+          <option>Helvetica Neue</option>
+          <option>Arial</option>
+          <option>Arial Black</option>
+          <option>Avenir Next</option>
+          <option>Futura</option>
+          <option>Georgia</option>
+          <option>Gill Sans</option>
+          <option>Impact</option>
+          <option>Menlo</option>
+          <option>SF Pro Display</option>
+          <option>Tahoma</option>
+          <option>Trebuchet MS</option>
+          <option>Verdana</option>
+        </select>
+      </label>
+      <label class="field"><span>Boyut %<b id="st-size-val">5.2</b></span>
+        <input type="range" id="st-size" min="2.5" max="12" step="0.1" value="5.2"></label>
+      <label class="field"><span>Yazı rengi</span><input type="color" id="st-color" value="#FFFFFF"></label>
+      <label class="field"><span>Kalın</span><input type="checkbox" id="st-bold" checked></label>
+      <label class="field"><span>İtalik</span><input type="checkbox" id="st-italic"></label>
+      <label class="field"><span>BÜYÜK HARF</span><input type="checkbox" id="st-upper"></label>
+      <label class="field"><span>Kontur rengi</span><input type="color" id="st-outline-color" value="#000000"></label>
+      <label class="field"><span>Kontur</span>
+        <input type="range" id="st-outline-w" min="0" max="6" step="0.5" value="2"></label>
+      <label class="field"><span>Arkaplan</span><input type="checkbox" id="st-bg-on" checked></label>
+      <label class="field"><span>Arkaplan rengi</span><input type="color" id="st-bg-color" value="#000000"></label>
+      <label class="field"><span>Arkaplan opaklığı</span>
+        <input type="range" id="st-bg-alpha" min="0" max="1" step="0.05" value="0.55"></label>
+      <label class="field"><span>Konum</span>
+        <select id="st-pos">
+          <option value="bottom" selected>Alt</option>
+          <option value="middle">Orta</option>
+          <option value="top">Üst</option>
+        </select>
+      </label>
+      <label class="field"><span>Dikey kenar boşluğu %</span>
+        <input type="number" id="st-margin" min="0" max="40" value="6"></label>
+      <label class="field"><span>Karaoke (kelime vurgusu)</span><input type="checkbox" id="st-karaoke"></label>
+      <label class="field"><span>Karaoke rengi</span><input type="color" id="st-karaoke-color" value="#FFD400"></label>
+    </div>
+
+    <div class="section-title">Bölümleme</div>
+    <div class="grid2">
+      <label class="field"><span>Mod</span>
+        <select id="cap-mode">
+          <option value="sentence" selected>Cümle blokları</option>
+          <option value="word">Kelime kelime (viral)</option>
+        </select></label>
+      <label class="field"><span>Satır başına karakter</span>
+        <input type="number" id="cap-maxchars" min="10" max="80" value="38"></label>
+      <label class="field"><span>Azami satır</span>
+        <input type="number" id="cap-maxlines" min="1" max="3" value="2"></label>
+      <label class="field"><span>Azami süre (sn)</span>
+        <input type="number" id="cap-maxdur" min="1" max="15" step="0.5" value="6"></label>
+      <label class="field"><span>Asgari süre (sn)</span>
+        <input type="number" id="cap-mindur" min="0.2" max="3" step="0.1" value="0.8"></label>
+      <label class="field"><span>Boşlukta böl (sn)</span>
+        <input type="number" id="cap-gap" min="0.2" max="3" step="0.1" value="1"></label>
+      <label class="field"><span>Cümle sonunda böl</span><input type="checkbox" id="cap-punct" checked></label>
+      <label class="field"><span>CPS uyarı eşiği</span>
+        <input type="number" id="cap-maxcps" min="10" max="40" value="21"></label>
+    </div>
+    <div class="hint" id="caption-stats"></div>
+
+    <div class="row">
+      <button class="btn primary" id="btn-make-captions" title="SRT üretir ve sequence'e Caption Track olarak ekler. Stil, Premiere'in Essential Graphics panelinden Track Style ile verilir.">Caption Track ekle</button>
+      <button class="btn" id="btn-make-overlay" title="Stilleri birebir uygulayarak alfa kanallı ProRes 4444 video üretir ve en üst video kanalına yerleştirir">Stilli overlay ekle</button>
+    </div>
+    <div class="row">
+      <button class="btn small" id="btn-export-ass" title="Stilli .ass dosyasını dışa aktar">ASS dışa aktar</button>
+      <span class="hint" style="flex:1">Caption Track = Premiere'in doğal altyazısı (stilini Premiere'de verirsin). Stilli overlay = burada seçtiğin stil birebir, yakılmış şeffaf video olarak.</span>
+    </div>
+  </div>
+
+  <!-- ===================== MODELLER ===================== -->
+  <div class="tab-page" id="models-page">
+    <div class="hint" style="padding-top:8px">Modeller <b>~/Library/Application Support/Fisilti/models</b> klasörüne iner. Türkçe için önerilen: <b>large-v3-turbo</b> (hız/kalite dengesi) veya <b>medium</b>.</div>
+    <div id="model-list"></div>
+  </div>
+
+  <!-- ===================== AYARLAR ===================== -->
+  <div class="tab-page" id="settings-page">
+    <div class="section-title">Yollar</div>
+    <div class="row"><label class="field" style="flex:1"><span>whisper-cli</span>
+      <input type="text" id="set-whisper-path"></label>
+      <button class="btn small" id="btn-detect-whisper">Bul</button></div>
+    <div class="row"><label class="field" style="flex:1"><span>ffmpeg</span>
+      <input type="text" id="set-ffmpeg-path"></label>
+      <button class="btn small" id="btn-detect-ffmpeg">Bul</button></div>
+
+    <div class="section-title">Performans</div>
+    <div class="row">
+      <label class="field"><span>İş parçacığı</span>
+        <input type="number" id="set-threads" min="1" max="16" value="6"></label>
+      <label class="field"><span>Playhead sorgu aralığı (ms)</span>
+        <input type="number" id="set-poll" min="100" max="2000" step="50" value="250"></label>
+    </div>
+    <div class="row">
+      <label class="field" title="Sessiz bölümleri modele göndermeden atlar (VAD modeli gerekir, Modeller sekmesinden indir)">
+        <input type="checkbox" id="opt-vad"> VAD sessizlik filtresi</label>
+    </div>
+
+    <div class="section-title">Bakım</div>
+    <div class="row">
+      <button class="btn small" id="btn-clear-cache">Geçici dosyaları temizle</button>
+      <button class="btn small" id="btn-open-logs">Log klasörünü aç</button>
+    </div>
+    <div class="hint" id="debug-info"></div>
+  </div>
+
+  <div id="status-bar"><div class="dot"></div><span id="status-text">hazır</span>
+    <div class="progress" id="main-progress-wrap" style="display:none"><div id="main-progress"></div></div>
+  </div>
+</div>
+
+<script src="js/CSInterface.js"></script>
+<script src="js/captions.js"></script>
+<script src="js/whisper.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
