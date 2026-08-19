@@ -60,6 +60,12 @@
       <button class="btn small" id="btn-search-prev" title="Önceki">↑</button>
       <button class="btn small" id="btn-search-next" title="Sonraki">↓</button>
     </div>
+    <div class="row" id="replace-toolbar">
+      <input type="text" id="replace-box" placeholder="Değiştir…" title="Enter: bu eşleşmeyi değiştir · ⌘/Ctrl+Enter: tümünü değiştir">
+      <button class="btn small" id="btn-replace-one" title="Seçili eşleşmenin olduğu segmentte değiştir (Enter)">Değiştir</button>
+      <button class="btn small" id="btn-replace-all" title="Tüm eşleşmeleri değiştir (⌘/Ctrl+Enter)">Tümünü</button>
+      <button class="btn small" id="btn-replace-undo" title="Son değiştirmeyi geri al" style="display:none">Geri al</button>
+    </div>
     <div class="row">
       <label class="field" title="Playhead ilerledikçe transkript kendini kaydırır">
         <input type="checkbox" id="opt-follow" checked> Playhead'i takip et</label>

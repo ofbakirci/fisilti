@@ -28,6 +28,7 @@
     userScrollUntil: 0,
     scrollSeekTimer: null,
     search: { q: '', hits: [], idx: -1 },
+    replaceUndo: null, // son bul-değiştir işleminin geri alma kaydı
     settings: null,
     busy: false
   };
@@ -321,10 +322,7 @@
       textEl.removeAttribute('contenteditable');
       var newText = textEl.textContent.trim();
       if (seg && newText && newText !== seg.text) {
-        seg.text = newText;
-        // kelime zamanlarını segment aralığına yeniden dağıt (drift önleme)
-        var est = C.estimateWords({ t0: seg.t0 * 1000, t1: seg.t1 * 1000, text: newText });
-        seg.words = est.map(function (w) { return { t0: w.t0 / 1000, t1: w.t1 / 1000, text: w.text }; });
+        setSegmentText(i, newText);
         persistTranscript();
       }
       renderTranscript();
@@ -354,6 +352,17 @@
         }
       }, 260);
     });
+  }
+
+  /* ================= segment metni ================= */
+  // Segment metnini değiştirir; kelime zamanlarını segment aralığına yeniden
+  // dağıtır (drift önleme). Kaydetmez — çağıran persistTranscript() yapar.
+  function setSegmentText(i, newText) {
+    var seg = S.segments[i];
+    if (!seg) return;
+    seg.text = newText;
+    var est = C.estimateWords({ t0: seg.t0 * 1000, t1: seg.t1 * 1000, text: newText });
+    seg.words = est.map(function (w) { return { t0: w.t0 / 1000, t1: w.t1 / 1000, text: w.text }; });
   }
 
   /* ================= arama ================= */
@@ -399,6 +408,74 @@
       el.scrollIntoView({ block: 'center', behavior: 'smooth' });
     }
     $('search-count').textContent = (S.search.idx + 1) + '/' + S.search.hits.length;
+  }
+
+  /* ================= bul-değiştir ================= */
+  // Büyük/küçük harf duyarsız (tr), aramayla aynı eşleşme kuralı.
+  // Tek seviye geri alma: son değiştirme işleminden önceki segment metinleri.
+  function replaceInText(text, q, rep) {
+    var tl = text.toLocaleLowerCase('tr'), ql = q.toLocaleLowerCase('tr');
+    var out = '', pos = 0, hit, n = 0;
+    while ((hit = tl.indexOf(ql, pos)) !== -1) {
+      out += text.slice(pos, hit) + rep;
+      pos = hit + q.length; n++;
+    }
+    out += text.slice(pos);
+    return { text: out, n: n };
+  }
+  function replaceSegments(indices) {
+    var q = $('search-box').value.trim();
+    var rep = $('replace-box').value;
+    if (!q) { status('Önce aranacak kelimeyi yaz.', 'error'); return; }
+    if (!indices.length) { status('Eşleşme yok.', 'error'); return; }
+    var undo = [], total = 0;
+    indices.forEach(function (i) {
+      var seg = S.segments[i];
+      if (!seg) return;
+      var r = replaceInText(seg.text, q, rep);
+      var t = r.text.replace(/\s{2,}/g, ' ').trim(); // boş değiştirmede çift boşluk kalmasın
+      if (!r.n || !t || t === seg.text) return;       // segmenti tamamen boşaltma
+      undo.push({ i: i, text: seg.text, words: seg.words });
+      setSegmentText(i, t);
+      total += r.n;
+    });
+    if (!undo.length) { status('Değişen bir şey yok.', 'error'); return; }
+    S.replaceUndo = undo;
+    persistTranscript();
+    runSearch(); // yeniden tarar, vurguları ve sayacı tazeler
+    updateCaptionStats();
+    $('btn-replace-undo').style.display = '';
+    status(total + ' yerde "' + q + '" → "' + rep + '" değiştirildi (' + undo.length + ' segment).', 'ok');
+  }
+  function replaceCurrent() {
+    if (!S.search.hits.length) { runSearch(); }
+    if (!S.search.hits.length) { status('Eşleşme yok.', 'error'); return; }
+    var idx = S.search.idx < 0 ? 0 : S.search.idx;
+    replaceSegments([S.search.hits[idx]]);
+    // runSearch sıfırladı; kaldığımız yerden devam et
+    if (S.search.hits.length) {
+      S.search.idx = Math.min(idx, S.search.hits.length) - 1;
+      gotoHit(1);
+    }
+  }
+  function replaceAll() {
+    if (!S.search.hits.length) runSearch();
+    replaceSegments(S.search.hits.slice());
+  }
+  function replaceUndo() {
+    var undo = S.replaceUndo;
+    if (!undo || !undo.length) return;
+    undo.forEach(function (u) {
+      var seg = S.segments[u.i];
+      if (!seg) return;
+      seg.text = u.text; seg.words = u.words;
+    });
+    S.replaceUndo = null;
+    persistTranscript();
+    runSearch();
+    updateCaptionStats();
+    $('btn-replace-undo').style.display = 'none';
+    status(undo.length + ' segment geri alındı.', 'ok');
   }
 
   /* ================= transkripsiyon akışı ================= */
@@ -906,6 +983,14 @@
     $('search-box').addEventListener('input', runSearch);
     $('btn-search-prev').addEventListener('click', function () { gotoHit(-1); });
     $('btn-search-next').addEventListener('click', function () { gotoHit(1); });
+    $('btn-replace-one').addEventListener('click', replaceCurrent);
+    $('btn-replace-all').addEventListener('click', replaceAll);
+    $('btn-replace-undo').addEventListener('click', replaceUndo);
+    $('replace-box').addEventListener('keydown', function (ev) {
+      if (ev.key !== 'Enter') return;
+      ev.preventDefault();
+      if (ev.metaKey || ev.ctrlKey) replaceAll(); else replaceCurrent();
+    });
 
     // kelime vurgusu görünümü değişince yeniden çiz
     $('opt-wordhl').addEventListener('change', renderTranscript);
@@ -942,6 +1027,10 @@
     updatePreview();
     status('hazır');
   }
+
+  // localhost:8090 debug konsolu için küçük kanca (üretimde zararsız)
+  window.__fisilti = { S: S, renderTranscript: renderTranscript, runSearch: runSearch,
+    replaceCurrent: replaceCurrent, replaceAll: replaceAll, replaceUndo: replaceUndo };
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();

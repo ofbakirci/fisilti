@@ -23,7 +23,8 @@ Dakika ücreti yok, abonelik yok, buluta giden ses yok.
 - Playhead ilerledikçe transkript takip eder, konuşulan kelime vurgulanır
 - **Scroll → videoyu sardır**: transkripti kaydırdıkça video uygun ana gider
 - Çift tıkla düzenle (kelime zamanları otomatik yeniden dağıtılır — kayma olmaz)
-- Arama + önceki/sonraki, segmentleri sequence marker'ına dökme
+- Arama + önceki/sonraki; **bul-değiştir** (tek eşleşme veya tümü, geri al) — yanlış duyulan özel isimleri tek hamlede düzelt
+- Segmentleri sequence marker'ına dökme
 - Transkript sequence başına otomatik saklanır; panel kapansa da kaybolmaz
 
 **Altyazı**

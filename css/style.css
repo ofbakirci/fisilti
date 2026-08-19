@@ -119,7 +119,8 @@ label.field > span { min-width: 0; }
 
 /* ---------- transkript ---------- */
 #transcript-toolbar { border-bottom: 1px solid var(--border); }
-#search-box { flex: 1; min-width: 90px; }
+#search-box, #replace-box { flex: 1; min-width: 90px; }
+#replace-toolbar { border-bottom: 1px solid var(--border); padding-top: 0; }
 #transcript {
   flex: 1; overflow-y: auto; padding: 4px 0;
   scroll-behavior: smooth;
