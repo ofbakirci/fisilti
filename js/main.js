@@ -870,13 +870,12 @@
     $('set-whisper-path').addEventListener('change', function () { S.settings.whisperPath = this.value.trim(); saveSettings(); });
     $('set-ffmpeg-path').addEventListener('change', function () { S.settings.ffmpegPath = this.value.trim(); saveSettings(); });
     $('set-threads').addEventListener('change', function () { S.settings.threads = parseInt(this.value, 10) || 6; saveSettings(); });
-    $('set-prompt').addEventListener('change', function () {
+    function normPrompt(v) {
       // satır sonlarını ve fazla virgülleri tek biçime getir: "a, b, c"
-      S.settings.prompt = this.value.split(/[\n,]+/).map(function (x) { return x.trim(); })
-        .filter(Boolean).join(', ');
-      this.value = S.settings.prompt;
-      saveSettings();
-    });
+      return v.split(/[\n,]+/).map(function (x) { return x.trim(); }).filter(Boolean).join(', ');
+    }
+    $('set-prompt').addEventListener('input', function () { S.settings.prompt = normPrompt(this.value); saveSettings(); });
+    $('set-prompt').addEventListener('change', function () { this.value = S.settings.prompt = normPrompt(this.value); saveSettings(); });
     $('set-poll').addEventListener('change', function () {
       S.settings.pollMs = Math.max(100, parseInt(this.value, 10) || 250);
       saveSettings(); startPolling();
@@ -908,6 +907,91 @@
     $('debug-info').innerHTML = 'Node ' + escapeHtml(v.node || '?') +
       (v.whisper ? ' · ' + escapeHtml(v.whisper) : '') +
       '<br>Eklenti: ' + escapeHtml(EXT_PATH);
+  }
+
+  /* ================= renk seçici =================
+   * CEP'in CEF'i <input type="color"> için sistem penceresini açmıyor. Native
+   * input'u değer taşıyıcı + renk örneği olarak tutuyoruz; tıklayınca kendi
+   * popover'ımız açılıyor (palet + hex). Değer değişince 'input' olayı
+   * tetiklenir, böylece mevcut dinleyiciler (önizleme, ayar kaydı) aynen çalışır. */
+  var COLOR_PRESETS = [
+    '#FFFFFF', '#F2F2F2', '#BFBFBF', '#808080', '#404040', '#000000',
+    '#FFD400', '#FFB000', '#FF7A00', '#FF3B30', '#E0005A', '#B400B4',
+    '#7B3FE4', '#3478F6', '#00A3FF', '#00C2A8', '#34C759', '#8DD600',
+    '#FFF3B0', '#FFD6A5', '#FFADAD', '#CDB4FF', '#A0E7FF', '#B9FBC0'
+  ];
+  function normalizeHex(v) {
+    v = String(v || '').trim().replace(/^#/, '');
+    if (/^[0-9a-f]{3}$/i.test(v)) v = v.replace(/(.)/g, '$1$1');
+    if (!/^[0-9a-f]{6}$/i.test(v)) return null;
+    return '#' + v.toUpperCase();
+  }
+  function wireColorPickers() {
+    var pop = document.createElement('div');
+    pop.id = 'color-pop';
+    pop.style.display = 'none';
+    pop.innerHTML = '<div class="swatches"></div>' +
+      '<div class="hexrow"><input type="text" id="color-pop-hex" maxlength="7" spellcheck="false">' +
+      '<button class="btn small" id="color-pop-ok">Tamam</button></div>';
+    document.body.appendChild(pop);
+    var sw = pop.querySelector('.swatches');
+    COLOR_PRESETS.forEach(function (c) {
+      var b = document.createElement('button');
+      b.type = 'button'; b.className = 'swatch'; b.style.background = c; b.title = c;
+      b.setAttribute('data-c', c);
+      sw.appendChild(b);
+    });
+    var hex = $('color-pop-hex');
+    var target = null;
+
+    function apply(v, close) {
+      var h = normalizeHex(v);
+      if (!h || !target) return;
+      if (target.value.toUpperCase() !== h) {
+        target.value = h;
+        target.dispatchEvent(new Event('input', { bubbles: true }));
+        target.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      hex.value = h;
+      if (close) hide();
+    }
+    function show(input) {
+      target = input;
+      hex.value = String(input.value || '#FFFFFF').toUpperCase();
+      pop.style.display = '';
+      // hedefin altına; sağ/alt kenardan taşarsa içeri çek
+      var r = input.getBoundingClientRect();
+      var left = Math.min(r.left, window.innerWidth - pop.offsetWidth - 8);
+      var top = r.bottom + 4;
+      if (top + pop.offsetHeight > window.innerHeight - 8) top = Math.max(8, r.top - pop.offsetHeight - 4);
+      pop.style.left = Math.max(8, left) + 'px';
+      pop.style.top = top + 'px';
+      setTimeout(function () { hex.focus(); hex.select(); }, 0);
+    }
+    function hide() { pop.style.display = 'none'; target = null; }
+
+    document.querySelectorAll('input[type="color"]').forEach(function (input) {
+      input.addEventListener('click', function (ev) {
+        ev.preventDefault(); // native pencere (CEP'te açılmıyor) yerine bizimki
+        if (target === input) { hide(); return; }
+        show(input);
+      });
+    });
+    sw.addEventListener('click', function (ev) {
+      var b = ev.target.closest('.swatch');
+      if (b) apply(b.getAttribute('data-c'), true);
+    });
+    hex.addEventListener('input', function () { apply(hex.value, false); });
+    hex.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Enter') { ev.preventDefault(); apply(hex.value, true); }
+      if (ev.key === 'Escape') hide();
+    });
+    $('color-pop-ok').addEventListener('click', function () { apply(hex.value, true); });
+    document.addEventListener('mousedown', function (ev) {
+      if (pop.style.display === 'none') return;
+      if (pop.contains(ev.target) || ev.target === target) return;
+      hide();
+    });
   }
 
   function restoreStyleInputs() {
@@ -948,6 +1032,10 @@
 
   /* ================= başlangıç ================= */
   function init() {
+    if (!C) {
+      status('captions.js yüklenemedi (FisiltiCaptions yok) — paneli yeniden yükle.', 'error');
+      return;
+    }
     if (!W || !W.available) {
       status('Node köprüsü başlatılamadı' + (W && W.reason ? ': ' + W.reason : '') , 'error');
       return;
@@ -966,6 +1054,7 @@
     wireTranscript();
     wireModels();
     wireSettings();
+    wireColorPickers();
 
     // sekmeler
     document.querySelectorAll('#tabs button').forEach(function (b) {
@@ -1039,7 +1128,8 @@
 
   // localhost:8090 debug konsolu için küçük kanca (üretimde zararsız)
   window.__fisilti = { S: S, renderTranscript: renderTranscript, runSearch: runSearch,
-    replaceCurrent: replaceCurrent, replaceAll: replaceAll, replaceUndo: replaceUndo };
+    replaceCurrent: replaceCurrent, replaceAll: replaceAll, replaceUndo: replaceUndo,
+    wireColorPickers: wireColorPickers };
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();

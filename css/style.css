@@ -92,6 +92,19 @@ input[type="color"] {
   border-radius: 4px; background: none; cursor: pointer;
 }
 input[type="range"] { accent-color: var(--accent); }
+#color-pop {
+  position: fixed; z-index: 50; width: 196px; padding: 8px;
+  background: var(--bg-panel, var(--bg-input)); border: 1px solid var(--border); border-radius: 6px;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.45);
+}
+#color-pop .swatches { display: grid; grid-template-columns: repeat(6, 1fr); gap: 5px; margin-bottom: 8px; }
+#color-pop .swatch {
+  width: 100%; aspect-ratio: 1; border: 1px solid rgba(255,255,255,0.18); border-radius: 4px;
+  padding: 0; cursor: pointer;
+}
+#color-pop .swatch:hover { outline: 2px solid var(--accent); outline-offset: 1px; }
+#color-pop .hexrow { display: flex; gap: 6px; }
+#color-pop .hexrow input { flex: 1; min-width: 0; font-variant-numeric: tabular-nums; text-transform: uppercase; }
 input[type="checkbox"] { accent-color: var(--accent); }
 
 label.field { display: flex; align-items: center; gap: 6px; color: var(--text-dim); }

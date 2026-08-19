@@ -9,9 +9,13 @@
  *   block   = { t0, t1, lines: [string], words: [word], cps }
  */
 (function (root, factory) {
-  if (typeof module !== 'undefined' && module.exports) module.exports = factory();
-  else root.FisiltiCaptions = factory();
-}(typeof self !== 'undefined' ? self : this, function () {
+  // CEP panelinde (--enable-nodejs --mixed-context) Node'un `module` globali
+  // pencerede de vardır; "ya module ya window" UMD kalıbı burada window'u atlar.
+  // Bu yüzden ikisine de yaz.
+  var api = factory();
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+  if (root) root.FisiltiCaptions = api;
+}(typeof window !== 'undefined' ? window : (typeof self !== 'undefined' ? self : this), function () {
   'use strict';
 
   var DEFAULTS = {

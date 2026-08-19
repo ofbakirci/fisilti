@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <ExtensionManifest Version="7.0"
     ExtensionBundleId="com.ofb.fisilti"
-    ExtensionBundleVersion="1.0.2"
+    ExtensionBundleVersion="1.0.3"
     ExtensionBundleName="Fisilti"
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <ExtensionList>
-    <Extension Id="com.ofb.fisilti.panel" Version="1.0.2"/>
+    <Extension Id="com.ofb.fisilti.panel" Version="1.0.3"/>
   </ExtensionList>
   <ExecutionEnvironment>
     <HostList>
