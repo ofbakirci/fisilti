@@ -37,6 +37,7 @@
     whisperPath: '', ffmpegPath: '',
     threads: 6, pollMs: 250, vad: false,
     language: 'tr', translate: false,
+    prompt: '',    // whisper --prompt: özel isim / terim sözlüğü
     modelFile: 'ggml-large-v3-turbo.bin',
     range: 'sequence',
     style: null,   // stil inputları ayrıca saklanır
@@ -869,6 +870,13 @@
     $('set-whisper-path').addEventListener('change', function () { S.settings.whisperPath = this.value.trim(); saveSettings(); });
     $('set-ffmpeg-path').addEventListener('change', function () { S.settings.ffmpegPath = this.value.trim(); saveSettings(); });
     $('set-threads').addEventListener('change', function () { S.settings.threads = parseInt(this.value, 10) || 6; saveSettings(); });
+    $('set-prompt').addEventListener('change', function () {
+      // satır sonlarını ve fazla virgülleri tek biçime getir: "a, b, c"
+      S.settings.prompt = this.value.split(/[\n,]+/).map(function (x) { return x.trim(); })
+        .filter(Boolean).join(', ');
+      this.value = S.settings.prompt;
+      saveSettings();
+    });
     $('set-poll').addEventListener('change', function () {
       S.settings.pollMs = Math.max(100, parseInt(this.value, 10) || 250);
       saveSettings(); startPolling();
@@ -935,6 +943,7 @@
     $('lang-select').value = S.settings.language || 'tr';
     $('opt-translate').checked = !!S.settings.translate;
     $('transcribe-range').value = S.settings.range || 'sequence';
+    $('set-prompt').value = S.settings.prompt || '';
   }
 
   /* ================= başlangıç ================= */

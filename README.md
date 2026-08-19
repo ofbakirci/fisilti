@@ -25,6 +25,7 @@ Dakika ücreti yok, abonelik yok, buluta giden ses yok.
 - Çift tıkla düzenle (kelime zamanları otomatik yeniden dağıtılır — kayma olmaz)
 - Arama + önceki/sonraki; **bul-değiştir** (tek eşleşme veya tümü, geri al) — yanlış duyulan özel isimleri tek hamlede düzelt
 - Segmentleri sequence marker'ına dökme
+- **Sözlük** (Ayarlar): özel isim ve terimleri virgülle yaz, Whisper'a `--prompt` olarak gider; yanlış duyma baştan azalır
 - Transkript sequence başına otomatik saklanır; panel kapansa da kaybolmaz
 
 **Altyazı**

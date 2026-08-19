@@ -196,7 +196,8 @@ window.FisiltiWhisper = (function () {
       '-of', outBase
     ];
     if (opts.translate) args.push('-tr');
-    if (opts.prompt) args.push('--prompt', opts.prompt);
+    // sözlük: her 30 sn'lik pencereye taşınsın, yoksa yalnız ilk pencerede etkili
+    if (opts.prompt) args.push('--prompt', opts.prompt, '--carry-initial-prompt');
     if (opts.vad && opts.vadModelPath) args.push('--vad', '--vad-model', opts.vadModelPath);
 
     var bin = opts.whisperPath || detectWhisper();

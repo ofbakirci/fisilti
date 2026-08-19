@@ -80,7 +80,13 @@ select, input[type="text"], input[type="number"] {
   padding: 4px 6px; font-family: var(--font); font-size: 12px;
   outline: none;
 }
-select:focus, input:focus { border-color: var(--accent); }
+textarea {
+  background: var(--bg-input); color: var(--text);
+  border: 1px solid var(--border); border-radius: 4px;
+  padding: 4px 6px; font-family: var(--font); font-size: 12px;
+  outline: none; resize: vertical; width: 100%; box-sizing: border-box; line-height: 1.4;
+}
+select:focus, input:focus, textarea:focus { border-color: var(--accent); }
 input[type="color"] {
   width: 26px; height: 20px; padding: 0; border: 1px solid var(--border);
   border-radius: 4px; background: none; cursor: pointer;
