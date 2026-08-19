@@ -268,6 +268,38 @@ window.FisiltiWhisper = (function () {
   /* ---------------- ffmpeg: şeffaf ProRes 4444 altyazı overlay'i ----------------
    * opts: { ffmpegPath, assPath, width, height, fps, durationSec, outPath }
    */
+  /* ---------- WAV enerji profili (konuşma başlangıcı hizalama için) ---------- */
+  // 16-bit PCM WAV (bizim EPR: mono 16 kHz) → pencere RMS dizisi. Başka format
+  // ya da hata: null (çağıran hizalamayı atlar).
+  function wavRms(wavPath, winMs) {
+    try {
+      winMs = winMs || 50;
+      var buf = fs.readFileSync(wavPath);
+      if (buf.length < 44 || buf.toString('ascii', 0, 4) !== 'RIFF' || buf.toString('ascii', 8, 12) !== 'WAVE') return null;
+      var pos = 12, fmt = null, dataOff = -1, dataLen = 0;
+      while (pos + 8 <= buf.length) {
+        var id = buf.toString('ascii', pos, pos + 4), size = buf.readUInt32LE(pos + 4);
+        if (id === 'fmt ') fmt = { format: buf.readUInt16LE(pos + 8), channels: buf.readUInt16LE(pos + 10), rate: buf.readUInt32LE(pos + 12), bits: buf.readUInt16LE(pos + 22) };
+        else if (id === 'data') { dataOff = pos + 8; dataLen = Math.min(size, buf.length - dataOff); break; }
+        pos += 8 + size + (size % 2);
+      }
+      if (!fmt || dataOff < 0 || fmt.bits !== 16 || fmt.format !== 1) return null;
+      var ch = fmt.channels, rate = fmt.rate;
+      var frames = Math.floor(dataLen / (2 * ch));
+      var win = Math.max(1, Math.floor(rate * winMs / 1000));
+      var out = [];
+      for (var f0 = 0; f0 + win <= frames; f0 += win) {
+        var acc = 0;
+        for (var f = f0; f < f0 + win; f++) {
+          var v = buf.readInt16LE(dataOff + (f * ch) * 2); // ilk kanal
+          acc += v * v;
+        }
+        out.push(Math.sqrt(acc / win));
+      }
+      return { winMs: winMs, rms: out };
+    } catch (e) { return null; }
+  }
+
   function renderOverlay(opts, cbs) {
     ensureDirs();
     cbs = cbs || {};
@@ -368,7 +400,7 @@ window.FisiltiWhisper = (function () {
     listModels: listModels, findModelFile: findModelFile, findVadModel: findVadModel,
     downloadModel: downloadModel, deleteModel: deleteModel,
     detectWhisper: detectWhisper, detectFfmpeg: detectFfmpeg,
-    transcribe: transcribe, renderOverlay: renderOverlay,
+    transcribe: transcribe, renderOverlay: renderOverlay, wavRms: wavRms,
     writeFile: writeFile, readJsonSafe: readJsonSafe, writeJson: writeJson,
     cleanCache: cleanCache, openInFinder: openInFinder, versions: versions
   };

@@ -97,8 +97,9 @@
   <!-- ===================== ALTYAZI & STİL ===================== -->
   <div class="tab-page" id="caption-page">
     <div id="style-preview"><div class="pv-caption">Böyle görünecek —<br>altyazı önizlemesi</div></div>
+    <div class="hint" id="preview-meta" style="padding:0 10px 2px"></div>
 
-    <div class="section-title">Stil</div>
+    <div class="section-title" title="Premiere, Caption Track stilini API'den almaz; bu ayarlar Stilli overlay ve ASS çıktısına uygulanır. Caption Track stili: Essential Graphics > Track Style.">Stil — stilli overlay &amp; ASS için</div>
     <div class="grid2">
       <label class="field"><span>Font</span>
         <select id="st-font">
@@ -137,8 +138,8 @@
           <option value="top">Üst</option>
         </select>
       </label>
-      <label class="field"><span>Dikey kenar boşluğu %</span>
-        <input type="number" id="st-margin" min="0" max="40" value="6"></label>
+      <label class="field" title="Alt konumda alt kenardan, üst konumda üst kenardan uzaklık; sequence yüksekliğinin yüzdesi"><span>Alt/üst kenardan uzaklık %</span>
+        <input type="number" id="st-margin" min="0" max="45" value="6"></label>
       <label class="field"><span>Karaoke (kelime vurgusu)</span><input type="checkbox" id="st-karaoke"></label>
       <label class="field"><span>Karaoke rengi</span><input type="color" id="st-karaoke-color" value="#FFD400"></label>
     </div>
@@ -163,6 +164,8 @@
       <label class="field"><span>Cümle sonunda böl</span><input type="checkbox" id="cap-punct" checked></label>
       <label class="field"><span>CPS uyarı eşiği</span>
         <input type="number" id="cap-maxcps" min="10" max="40" value="21"></label>
+      <label class="field" title="Tüm altyazıları bu kadar saniye kaydırır (eksi = erkene). Caption Track, overlay ve dışa aktarımların hepsine uygulanır. Kaydedilmez."><span>Zaman kaydırma (sn)</span>
+        <input type="number" id="cap-offset" min="-30" max="30" step="0.1" value="0"></label>
     </div>
     <div class="hint" id="caption-stats"></div>
 

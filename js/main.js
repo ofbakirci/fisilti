@@ -135,6 +135,7 @@
         } else {
           $('seq-info').textContent = 'aktif sequence yok';
         }
+        try { updatePreview(); } catch (ePv) {} // önizleme oranı sequence'a göre
       } else {
         $('seq-info').textContent = 'Premiere\'e ulaşılamadı';
       }
@@ -227,7 +228,11 @@
         }
       }
     }
-    // kelime vurgusu
+    // kelime vurgusu (başka segmentlerde kalan bayat vurguyu da temizle)
+    box.querySelectorAll('.w.spoken').forEach(function (el) {
+      var segEl = el.closest('.seg');
+      if (!segEl || +segEl.getAttribute('data-i') !== idx) el.classList.remove('spoken');
+    });
     if (idx >= 0 && $('opt-wordhl').checked) {
       var seg = S.segments[idx];
       if (seg.words && seg.words.length) {
@@ -566,6 +571,28 @@
                 words: words.length ? words : null
               });
             });
+            // Whisper'ın erken başlattığı segmentleri ses enerjisine göre hizala
+            // (wav'a göre ms; sequence offset'i düşülüp geri eklenir)
+            if (finalSegs.length) {
+              try {
+                var prof = W.wavRms(res.outPath, 50);
+                if (prof) {
+                  var rel = finalSegs.map(function (sg) {
+                    return {
+                      t0: Math.round((sg.t0 - S.offsetSec) * 1000), t1: Math.round((sg.t1 - S.offsetSec) * 1000), text: sg.text,
+                      words: sg.words ? sg.words.map(function (w) { return { t0: Math.round((w.t0 - S.offsetSec) * 1000), t1: Math.round((w.t1 - S.offsetSec) * 1000), text: w.text }; }) : null
+                    };
+                  });
+                  var snapped = C.snapToSpeech(rel, prof.rms, prof.winMs);
+                  finalSegs = snapped.map(function (sg) {
+                    return {
+                      t0: S.offsetSec + sg.t0 / 1000, t1: S.offsetSec + sg.t1 / 1000, text: sg.text,
+                      words: sg.words ? sg.words.map(function (w) { return { t0: S.offsetSec + w.t0 / 1000, t1: S.offsetSec + w.t1 / 1000, text: w.text }; }) : null
+                    };
+                  });
+                }
+              } catch (eSnap) { /* hizalama isteğe bağlı; sessizce atla */ }
+            }
             if (finalSegs.length) S.segments = finalSegs;
             renderTranscript();
             persistTranscript(jobSeqId);
@@ -625,17 +652,51 @@
     };
   }
 
-  function buildBlocks() {
+  // Kullanıcının "Zaman kaydırma" değeri (sn, ± olabilir). Kaydedilmez — proje
+  // bazlı bir düzeltmedir, panel yeniden açılınca 0'a döner.
+  function readOffsetMs() { return Math.round((parseFloat($('cap-offset').value) || 0) * 1000); }
+
+  // capOverrides: overlay gibi tuvale bağlı çıktılar için bölümleme ayarını ezer
+  function buildBlocks(capOverrides) {
     if (!S.segments.length) return [];
+    var off = readOffsetMs();
+    var sh = function (ms) { return Math.max(0, ms + off); };
     var msSegs = S.segments.map(function (s) {
       return {
-        t0: Math.round(s.t0 * 1000), t1: Math.round(s.t1 * 1000), text: s.text,
+        t0: sh(Math.round(s.t0 * 1000)), t1: sh(Math.round(s.t1 * 1000)), text: s.text,
         words: s.words ? s.words.map(function (w) {
-          return { t0: Math.round(w.t0 * 1000), t1: Math.round(w.t1 * 1000), text: w.text };
+          return { t0: sh(Math.round(w.t0 * 1000)), t1: sh(Math.round(w.t1 * 1000)), text: w.text };
         }) : null
       };
     });
-    return C.buildCaptions(msSegs, readCapOpts());
+    var opts = readCapOpts();
+    if (capOverrides) Object.keys(capOverrides).forEach(function (k) { opts[k] = capOverrides[k]; });
+    return C.buildCaptions(msSegs, opts);
+  }
+
+  // Gerçek metin ölçümü (CEP = Chromium): canvas measureText, libass'ın
+  // kullanacağı sistem fontuyla ölçer. Kestirimden çok daha isabetli.
+  var _measureCtx = null;
+  function measurePx(text, fontPx, st) {
+    try {
+      if (!_measureCtx) _measureCtx = document.createElement('canvas').getContext('2d');
+      _measureCtx.font = (st.italic ? 'italic ' : '') + (st.bold ? '700 ' : '400 ') +
+        fontPx + 'px "' + st.fontFamily + '", sans-serif';
+      return _measureCtx.measureText(st.uppercase ? String(text).toLocaleUpperCase('tr') : String(text)).width;
+    } catch (e) { return String(text).length * fontPx * 0.55; }
+  }
+
+  // Overlay için: satır uzunluğunu sequence genişliği + yazı boyutuna göre sınırla
+  function overlayCapOverrides(seq, st) {
+    if (!seq || !seq.width || !seq.height) return null;
+    var fontPx = seq.height * st.fontSizePct / 100;
+    var usable = seq.width * 0.9;
+    // ortalama karakter genişliği: örnek Türkçe pangram üstünden
+    var sample = 'Pijamalı hasta yağız şoföre çabucak güvendi. 0123456789';
+    var avg = measurePx(sample, fontPx, st) / sample.length;
+    var fit = Math.max(4, Math.floor(usable / avg));
+    var user = parseInt($('cap-maxchars').value, 10) || 42;
+    return fit < user ? { maxCharsPerLine: fit } : null;
   }
 
   function updateCaptionStats() {
@@ -652,9 +713,16 @@
     var st = readStyle();
     var pv = $('style-preview');
     var cap = pv.querySelector('.pv-caption');
-    var H = pv.clientHeight || 130;
-    var scale = H / 720; // önizleme, 720p tuvalin küçültülmüşü gibi davranır
-    var fontPx = Math.max(8, 720 * st.fontSizePct / 100 * scale);
+    // tuval: sequence oranında (dikey video → dik kutu); bilinmiyorsa 16:9
+    var seq = S.env && S.env.seq;
+    var aspect = (seq && seq.width && seq.height) ? seq.width / seq.height : 16 / 9;
+    var outerW = (pv.parentNode.clientWidth || 400) - 20;
+    var H = Math.round(Math.min(260, Math.max(110, outerW / aspect)));
+    var Wpx = Math.round(H * aspect);
+    if (Wpx > outerW) { Wpx = outerW; H = Math.round(Wpx / aspect); }
+    pv.style.height = H + 'px'; pv.style.width = Wpx + 'px';
+    var fontPx = Math.max(6, H * st.fontSizePct / 100);
+    var scale = H / 720;
     cap.style.fontFamily = st.fontFamily;
     cap.style.fontSize = fontPx + 'px';
     cap.style.fontWeight = st.bold ? '700' : '400';
@@ -675,12 +743,21 @@
     if (st.position === 'top') cap.style.top = mv + 'px';
     else if (st.position === 'middle') { cap.style.top = '50%'; cap.style.transform = 'translate(-50%,-50%)'; }
     else cap.style.bottom = mv + 'px';
-    // karaoke önizlemesi: ilk kelime vurgulu
-    if (st.karaoke) {
-      cap.innerHTML = '<span style="color:' + st.karaokeColor + '">Böyle</span> görünecek —<br>altyazı önizlemesi';
-    } else {
-      cap.textContent = 'Böyle görünecek —\naltyazı önizlemesi';
+    // metin: transkript varsa gerçek ilk blok (overlay sığdırmasıyla), yoksa örnek
+    var lines = ['Böyle görünecek —', 'altyazı önizlemesi'];
+    if (S.segments.length) {
+      try {
+        var b0 = buildBlocks(overlayCapOverrides(seq, st))[0];
+        if (b0 && b0.lines.length) lines = b0.lines;
+      } catch (e) {}
     }
+    var html = lines.map(function (l, i) {
+      var words = l.split(' ').map(escapeHtml);
+      if (st.karaoke && i === 0 && words.length) words[0] = '<span style="color:' + st.karaokeColor + '">' + words[0] + '</span>';
+      return words.join(' ');
+    }).join('<br>');
+    cap.innerHTML = html;
+    $('preview-meta').textContent = seq && seq.width ? seq.width + '×' + seq.height + ' · yazı ' + Math.round(seq.height * st.fontSizePct / 100) + 'px' : '';
   }
 
   function ensureBlocksOrWarn() {
@@ -703,11 +780,27 @@
   }
 
   function addOverlay() {
-    var blocks = ensureBlocksOrWarn();
-    if (!blocks) return;
     if (!S.env || !S.env.seq) { status('Sequence bilgisi yok.', 'error'); return; }
     var seq = S.env.seq;
     var st = readStyle();
+    var blocks = buildBlocks(overlayCapOverrides(seq, st));
+    if (!blocks.length) { status('Önce transkript üret.', 'error'); switchTab('transcribe-page'); return; }
+    // tek kelime bile sığmıyorsa libass saramaz — yazı boyutunu düşürmesini iste
+    var fontPx = seq.height * st.fontSizePct / 100, usable = seq.width * 0.9;
+    var worstPx = 0, worstWord = '';
+    blocks.forEach(function (b) {
+      b.lines.forEach(function (l) {
+        String(l).split(/\s+/).forEach(function (w) {
+          var px = measurePx(w, fontPx, st);
+          if (px > worstPx) { worstPx = px; worstWord = w; }
+        });
+      });
+    });
+    if (worstPx > usable) {
+      var maxPct = Math.floor(st.fontSizePct * (usable / worstPx) * 10) / 10;
+      status('Yazı bu sequence (' + seq.width + '×' + seq.height + ') için büyük: "' + worstWord + '" sığmıyor. Boyutu en çok %' + maxPct + ' yap.', 'error');
+      return;
+    }
     var ass = C.toASS(blocks, st, seq.width, seq.height);
     var assPath = W.pathx.join(W.CACHE_DIR, 'fisilti_' + Date.now() + '.ass');
     W.writeFile(assPath, ass, false);
@@ -1103,6 +1196,7 @@
         saveSettings();
       });
     });
+    $('cap-offset').addEventListener('input', function () { updateCaptionStats(); updatePreview(); });
     ['cap-mode', 'cap-maxchars', 'cap-maxlines', 'cap-maxdur', 'cap-mindur', 'cap-gap',
      'cap-punct', 'cap-maxcps'].forEach(function (id) {
       $(id).addEventListener('input', function () { updateCaptionStats(); saveSettings(); });

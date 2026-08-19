@@ -26,6 +26,8 @@ Dakika ücreti yok, abonelik yok, buluta giden ses yok.
 - Arama + önceki/sonraki; **bul-değiştir** (tek eşleşme veya tümü, geri al) — yanlış duyulan özel isimleri tek hamlede düzelt
 - Segmentleri sequence marker'ına dökme
 - **Sözlük** (Ayarlar): özel isim ve terimleri virgülle yaz, Whisper'a `--prompt` olarak gider; yanlış duyma baştan azalır
+- **Konuşma hizalama**: Whisper'ın erken başlattığı altyazılar ses enerjisine göre gerçek konuşma başına çekilir
+- **Zaman kaydırma**: tüm altyazıları ± saniye kaydır (Altyazı & Stil > Bölümleme)
 - Transkript sequence başına otomatik saklanır; panel kapansa da kaybolmaz
 
 **Altyazı**

@@ -143,8 +143,14 @@
         if (!best || score < best.score) best = { i: i, score: score };
       }
     }
-    if (!best) { // tek kelime bile sığmıyor olabilir; zorla böl
-      return [text.slice(0, maxChars), text.slice(maxChars)].filter(Boolean).slice(0, maxLines);
+    if (!best) {
+      // Dengeli kırım bulunamadı. Kelimeyi ASLA kırpma — metin kaybı olur
+      // (karaoke ASS'te words'ten tam yazılıp taşar). Greedy: ilk satıra
+      // sığan kadar kelime al (en az 1), kalanına devam et.
+      var take = 1;
+      while (take < words.length && words.slice(0, take + 1).join(' ').length <= maxChars) take++;
+      var restL = words.length > take ? breakLines(words.slice(take), maxChars, maxLines - 1) : [];
+      return [words.slice(0, take).join(' ')].concat(restL).slice(0, maxLines);
     }
     var first = words.slice(0, best.i).join(' ');
     var rest = words.slice(best.i);
@@ -322,6 +328,7 @@
     var fontSize = Math.round(H * st.fontSizePct / 100);
     var align = st.position === 'top' ? 8 : (st.position === 'middle' ? 5 : 2);
     var marginV = Math.round(H * st.marginVPct / 100);
+    var marginH = Math.round(W * 0.05); // yatay kenar %5 — sarma sınırı
     var scale = H / 720;
     var outline = Math.round(st.outlineWidth * scale * 10) / 10;
     // BorderStyle 4: libass'a özgü satır başına arkaplan kutusu (BackColour kullanılır,
@@ -338,7 +345,9 @@
       'ScriptType: v4.00+',
       'PlayResX: ' + W,
       'PlayResY: ' + H,
-      'WrapStyle: 2',
+      // 0 = akıllı sarma: satır yine de tuvale sığmazsa libass dengeli böler
+      // (2 = sarma yok → dikey sequence'ta taşıyordu)
+      'WrapStyle: 0',
       'ScaledBorderAndShadow: yes',
       '',
       '[V4+ Styles]',
@@ -348,7 +357,7 @@
       ['Style: Fisilti', st.fontFamily, fontSize, primary, secondary,
         assColor(st.outlineColor, 1), assColor(st.backgroundColor, st.backgroundAlpha),
         st.bold ? -1 : 0, st.italic ? -1 : 0, 0, 0, 100, 100, 0, 0,
-        borderStyle, boxPad, st.shadow, align, 40, 40, marginV, 1].join(','),
+        borderStyle, boxPad, st.shadow, align, marginH, marginH, marginV, 1].join(','),
       '',
       '[Events]',
       'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text'
@@ -385,6 +394,73 @@
     return head.concat(events).join('\n') + '\n';
   }
 
+  /* ---------------- konuşma başlangıcına hizalama ---------------- */
+
+  // Whisper ilk segmenti (ve sessizlik sonrası segmentleri) sıkça 0'dan ya da
+  // gerçek konuşmadan saniyeler önce başlatır. Ses enerjisiyle (pencere RMS)
+  // segment başlangıcını ilk sesli pencereye çeker. Yalnız başlangıç oynar;
+  // bitişe dokunulmaz. Gürültü/müzik altında eşik aşılmazsa hiçbir şey değişmez.
+  //   segments: [{t0,t1,text,words?}] ms (wav'a göre), rms: [Number], winMs: pencere
+  //   opts: { maxShiftMs (3000), minShiftMs (120), padMs (60) }
+  function snapToSpeech(segments, rms, winMs, opts) {
+    opts = opts || {};
+    if (!rms || rms.length < 10 || !winMs) return segments;
+    var maxShift = opts.maxShiftMs != null ? opts.maxShiftMs : 3000;
+    var minShift = opts.minShiftMs != null ? opts.minShiftMs : 250; // altyazının ~0.25 sn önde gelmesi doğal
+    var pad = opts.padMs != null ? opts.padMs : 80;
+    var sorted = rms.slice().sort(function (a, b) { return a - b; });
+    var floor = sorted[Math.floor(sorted.length * 0.2)] || 0;
+
+    return segments.map(function (seg) {
+      var i0 = Math.max(0, Math.floor(seg.t0 / winMs));
+      var i1 = Math.min(rms.length, Math.ceil(seg.t1 / winMs));
+      if (i1 - i0 < 3) return seg;
+      var peak = 0;
+      for (var i = i0; i < i1; i++) if (rms[i] > peak) peak = rms[i];
+      var thr = Math.max(floor * 3, peak * 0.2);
+      if (peak <= floor * 3) return seg; // segment tümüyle sessiz/gürültü: dokunma
+      var on = -1;
+      for (var j = i0; j < i1 - 1; j++) {
+        if (rms[j] > thr && rms[j + 1] > thr) { on = j; break; }
+      }
+      if (on < 0) return seg;
+      // yumuşak giriş: gürültü tabanının belirgin üstündeki zayıf pencereleri
+      // geriye doğru kapsa (en çok 500 ms) — "h", "s" gibi sessiz başlangıçlar kesilmesin
+      var soft = floor * 1.5, back = 0;
+      while (on > i0 && back < Math.ceil(500 / winMs) && rms[on - 1] > soft) { on--; back++; }
+      var newT0 = Math.max(seg.t0, on * winMs - pad);
+      var shift = newT0 - seg.t0;
+      if (shift < minShift || shift > maxShift) return seg;
+      if (newT0 >= seg.t1 - 200) return seg;
+      var out = { t0: newT0, t1: seg.t1, text: seg.text, words: null };
+      if (seg.words && seg.words.length) {
+        // Yeni başlangıçtan önce kalan kelimelerin zamanı güvenilmez: onları
+        // [newT0, ilk güvenilir kelime) aralığına eşit dağıt; gerisi aynen kalır.
+        var ws = seg.words.map(function (w) { return { t0: w.t0, t1: w.t1, text: w.text }; });
+        var k = 0;
+        while (k < ws.length && ws[k].t0 < newT0 + 100) k++;
+        var spanEnd = k < ws.length ? ws[k].t0 : seg.t1;
+        if (k > 0 && spanEnd > newT0) {
+          var step = (spanEnd - newT0) / k;
+          for (var q = 0; q < k; q++) {
+            ws[q].t0 = Math.round(newT0 + q * step);
+            ws[q].t1 = Math.round(newT0 + (q + 1) * step);
+          }
+        }
+        out.words = ws;
+      }
+      return out;
+    });
+  }
+
+  // Verilen tuval ve yazı boyutu için bir satıra sığan karakter sayısı (kaba
+  // kestirim: kalın sans-serif'te ortalama karakter ~0.55 em; yatayda %5 kenar).
+  function fitCharsPerLine(width, height, fontSizePct, marginHPct) {
+    var fontPx = height * (fontSizePct || 5) / 100;
+    var usable = width * (1 - 2 * ((marginHPct != null ? marginHPct : 5) / 100));
+    return Math.max(4, Math.floor(usable / (fontPx * 0.55)));
+  }
+
   /* ---------------- canlı akış satırı ayrıştırma ---------------- */
 
   // whisper-cli stdout satırı: "[00:00:03.240 --> 00:00:06.120]   Metin..."
@@ -417,6 +493,8 @@
     toTXT: toTXT,
     toCSV: toCSV,
     toASS: toASS,
+    snapToSpeech: snapToSpeech,
+    fitCharsPerLine: fitCharsPerLine,
     parseLiveLine: parseLiveLine
   };
 }));

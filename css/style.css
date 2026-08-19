@@ -170,15 +170,15 @@ label.field > span { min-width: 0; }
 /* ---------- altyazı & stil ---------- */
 #caption-page { overflow-y: auto; }
 #style-preview {
-  margin: 8px 10px; height: 130px; border-radius: var(--radius);
+  margin: 8px auto 4px; height: 130px; border-radius: var(--radius);
   background: linear-gradient(135deg, #4a5568 0%, #2d3748 55%, #1a202c 100%);
   position: relative; overflow: hidden; flex: none;
   border: 1px solid var(--border);
 }
 #style-preview .pv-caption {
   position: absolute; left: 50%; transform: translateX(-50%);
-  text-align: center; white-space: pre-line; line-height: 1.25;
-  padding: 0.18em 0.45em; border-radius: 3px; max-width: 92%;
+  text-align: center; white-space: nowrap; line-height: 1.25;
+  padding: 0.18em 0.45em; border-radius: 3px;
 }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; padding: 4px 10px; }
 .grid2 label.field { justify-content: space-between; }

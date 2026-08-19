@@ -90,12 +90,19 @@ t('buildCaptions uzun boşlukta yeni blok açar', () => {
   assert.strictEqual(blocks.length, 2);
   assert.strictEqual(blocks[1].lines.join(' '), 'yeni blok');
 });
-t('buildCaptions karakter limitini aşınca böler', () => {
+t('buildCaptions karakter limitini aşınca böler (kelime bütünlüğüyle)', () => {
   const words = [];
   for (let i = 0; i < 30; i++) words.push([i * 300, i * 300 + 250, 'kelime' + i]);
   const blocks = C.buildCaptions([{ t0: 0, t1: 9000, text: '', words: mkWords(words) }],
     { maxCharsPerLine: 20, maxLines: 2, maxDurMs: 60000, gapSplitMs: 5000 });
-  blocks.forEach(b => b.lines.forEach(l => assert.ok(l.length <= 20, 'satır uzun: ' + l)));
+  // kelime asla ortadan kesilmez; satır en fazla limit + bir kelime payı taşar
+  const longest = Math.max(...words.map(w => w[2].length));
+  blocks.forEach(b => b.lines.forEach(l => {
+    assert.ok(l.length <= 20 + longest, 'satır çok uzun: ' + l);
+    l.split(' ').forEach(w => assert.ok(/^kelime\d+$/.test(w), 'kelime kesilmiş: ' + w));
+  }));
+  const all = blocks.map(b => b.lines.join(' ')).join(' ');
+  assert.strictEqual(all, words.map(w => w[2]).join(' '), 'metin kaybı var');
   assert.ok(blocks.length > 3);
 });
 t('buildCaptions asgari süreyi uygular ama sonraki bloğa çarpmaz', () => {
@@ -173,6 +180,69 @@ t('toASS karaoke modunda \\k etiketleri üretir', () => {
 t('toASS süslü parantezleri etkisizleştirir', () => {
   const ass = C.toASS([{ t0: 0, t1: 1000, lines: ['tehlike {\\b1} burada'], words: [] }], {}, 1280, 720);
   assert.ok(!/\{\\b1\}/.test(ass));
+});
+
+/* ---- konuşma başlangıcına hizalama ---- */
+// 50 ms pencere: 0–1.2 sn sessiz (~500), 1.2–5.0 sn konuşma (~4000), sonra sessiz
+function fakeRms() {
+  const r = [];
+  for (let i = 0; i < 200; i++) r.push((i >= 24 && i < 100) || (i >= 110 && i < 126) ? 4000 + (i % 7) * 100 : 500 + (i % 5) * 40);
+  return r;
+}
+t('snapToSpeech erken başlayan segmenti ilk sesli pencereye çeker', () => {
+  const segs = [{ t0: 0, t1: 5180, text: 'Ne oldu?', words: [{ t0: 0, t1: 444, text: 'Ne' }, { t0: 444, t1: 5180, text: 'oldu?' }] }];
+  const out = C.snapToSpeech(segs, fakeRms(), 50);
+  assert.ok(out[0].t0 >= 1100 && out[0].t0 <= 1200, 'beklenen ~1140, gelen ' + out[0].t0);
+  assert.strictEqual(out[0].t1, 5180);
+  assert.strictEqual(out[0].words[0].t0, out[0].t0, 'ilk kelime yeni başlangıca çekilmeli');
+  assert.ok(out[0].words[0].t1 - out[0].words[0].t0 > 300, 'erken kelimeler yeni aralığa dağıtılmalı, sıfır süre kalmamalı');
+  assert.ok(out[0].words[1].t0 >= out[0].words[0].t1);
+});
+t('snapToSpeech zaten hizalı segmente dokunmaz', () => {
+  const segs = [{ t0: 5480, t1: 6280, text: 'Anlarız şimdi.', words: null }];
+  const out = C.snapToSpeech(segs, fakeRms(), 50);
+  assert.strictEqual(out[0].t0, 5480);
+});
+t('snapToSpeech tamamen sessiz/gürültülü segmente dokunmaz', () => {
+  const segs = [{ t0: 7000, t1: 9000, text: '…', words: null }];
+  const out = C.snapToSpeech(segs, fakeRms(), 50);
+  assert.strictEqual(out[0].t0, 7000);
+});
+t('snapToSpeech çok büyük kaymayı (>3 sn) reddeder', () => {
+  const r = fakeRms(); for (let i = 0; i < 90; i++) r[i] = 500; // konuşma 4.5 sn'de başlasın
+  const out = C.snapToSpeech([{ t0: 0, t1: 5180, text: 'x', words: null }], r, 50);
+  assert.strictEqual(out[0].t0, 0);
+});
+t('snapToSpeech rms yoksa girdiyi aynen döner', () => {
+  const segs = [{ t0: 0, t1: 100, text: 'x', words: null }];
+  assert.strictEqual(C.snapToSpeech(segs, null, 50), segs);
+});
+
+/* ---- tuvale sığdırma ---- */
+t('fitCharsPerLine dikey sequence\'ta satırı kısaltır, yatayda geniş bırakır', () => {
+  const vert = C.fitCharsPerLine(1080, 1920, 12, 5);  // yazı 230px
+  const horiz = C.fitCharsPerLine(1920, 1080, 5.2, 5); // yazı 56px
+  assert.ok(vert < 12, 'dikey: ' + vert);
+  assert.ok(horiz >= 42, 'yatay: ' + horiz);
+});
+t('toASS akıllı sarma ve yatay kenar boşluğu yazar', () => {
+  const ass = C.toASS([{ t0: 0, t1: 1000, lines: ['merhaba'], words: [] }], {}, 1080, 1920);
+  assert.ok(/WrapStyle: 0/.test(ass));
+  assert.ok(/,54,54,/.test(ass), 'MarginL/R = %5 × 1080 = 54');
+});
+
+/* ---- kelime kırpılmaz ---- */
+t('breakLines satıra sığmayan kelimeyi kırpmaz, kendi satırına bırakır', () => {
+  const lines = C.breakLines(['fotoğrafını', 'çek'], 7, 2);
+  assert.deepStrictEqual(lines, ['fotoğrafını', 'çek']);
+});
+t('buildCaptions dar satır sınırında metin kaybetmez', () => {
+  const text = 'Testin fotoğrafını çek eksiklerini belirlesin ve seni güçlendirsin';
+  const words = text.split(' ');
+  const seg = [{ t0: 0, t1: 8000, text, words: words.map((w, i) => ({ t0: i * 1000, t1: i * 1000 + 900, text: w })) }];
+  const blocks = C.buildCaptions(seg, { maxCharsPerLine: 7, maxLines: 2 });
+  const out = blocks.map(b => b.lines.join(' ')).join(' ').replace(/\s+/g, ' ');
+  assert.strictEqual(out, text, 'çıktı: ' + out);
 });
 
 /* ---- uçtan uca: gerçek whisper json varsa ---- */
