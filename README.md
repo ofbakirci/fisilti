@@ -38,6 +38,7 @@ Dakika ücreti yok, abonelik yok, buluta giden ses yok.
   sekmesinden herhangi bir ana tek tıkla dönülür (50 adım)
 - Transkript sequence başına otomatik saklanır; panel kapansa da kaybolmaz
 - **İçe aktar**: hazır SRT/VTT dosyasını transkript olarak yükle, düzenle, tekrar üret
+- **Stil kütüphanesi**: hazır stiller (Klasik, Kutulu, Beyaz Kutu, Sosyal, Sarı Zemin, Zarif) + kendi stilini adla kaydet, JSON olarak paylaş/içe aktar
 - **Stili Premiere'e kaydet**: paneldeki stil Premiere metin stiline çevrilir (yerel stiller + proje); caption track'e Track Style menüsünden tek tıkla uygulanır
 
 **Altyazı**
