@@ -27,6 +27,7 @@
     pendingUpdate: null,       // checkUpdate sonucu (yeni sürüm varsa)
     pollTimer: null,
     lastPlayheadSec: 0,        // "+ Satır" playhead konumuna ekler
+    energy: null,              // {offsetSec, winMs, rms[0-100]} — timeline dalga formu
     currentSegIdx: -1,
     programmaticScrollUntil: 0,
     userScrollUntil: 0,
@@ -155,13 +156,14 @@
     var id = seqIdOverride || (S.env && S.env.seq && S.env.seq.id);
     if (!id) return;
     // boş liste de yazılır — son satırın silinmesi kalıcı olmalı
-    W.writeJson(transcriptFile(id), { segments: S.segments, savedAt: Date.now() });
+    W.writeJson(transcriptFile(id), { segments: S.segments, savedAt: Date.now(), energy: S.energy || undefined });
   }
   function maybeLoadSavedTranscript(seqId) {
     if (S.segments.length || S.liveMode || S.busy) return;
     var data = W.readJsonSafe(transcriptFile(seqId));
     if (data && data.segments && data.segments.length) {
       S.segments = data.segments;
+      S.energy = data.energy || null;
       renderTranscript();
       status(S.segments.length + ' segment (kayıttan yüklendi)', 'ok');
     }
@@ -170,6 +172,7 @@
   /* ================= transkript görünümü ================= */
   function renderTranscript() {
     var box = $('transcript');
+    if (window.FisiltiTimeline) FisiltiTimeline.rebuild();
     if (!S.segments.length) {
       box.innerHTML = '<div class="empty">Henüz transkript yok.</div>';
       return;
@@ -278,6 +281,7 @@
         var sec = Number(parts[1]) / 254016000000;
         S.lastPlayheadSec = sec;
         if (S.segments.length && !S.liveMode) highlightPlayhead(sec);
+        if (window.FisiltiTimeline && !S.liveMode) FisiltiTimeline.tick(sec);
       });
     }, S.settings.pollMs || 250);
   }
@@ -512,6 +516,41 @@
     insertSegment(at, t0, t1);
   }
 
+  /* ================= zaman çizelgesi ================= */
+  function wireTimeline() {
+    if (!window.FisiltiTimeline) return;
+    FisiltiTimeline.init({
+      container: $('timeline'),
+      getSegments: function () { return S.segments; },
+      getEnergy: function () { return S.energy; },
+      getDuration: function () { return (S.env && S.env.seq && S.env.seq.durationSec) || 0; },
+      getFollow: function () { return $('opt-follow').checked; },
+      isBusy: function () { return S.busy || S.liveMode; },
+      onSeek: seek,
+      onChange: applySegTime, // taşı/uzat sonucu — sıralar, kaydeder, iki görünümü tazeler
+      onSelect: function (i) {
+        var row = $('transcript').querySelector('.seg[data-i="' + i + '"]');
+        if (row) {
+          S.programmaticScrollUntil = Date.now() + 700;
+          row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        }
+      },
+      onEditText: openTextEditor
+    });
+    $('tl-zoom-in').addEventListener('click', FisiltiTimeline.zoomIn);
+    $('tl-zoom-out').addEventListener('click', FisiltiTimeline.zoomOut);
+    var wrap = $('timeline-wrap');
+    if (S.settings.timelineOpen === false) wrap.classList.add('collapsed');
+    $('tl-toggle').addEventListener('click', function () {
+      var closed = wrap.classList.toggle('collapsed');
+      this.textContent = 'Zaman çizelgesi ' + (closed ? '▸' : '▾');
+      S.settings.timelineOpen = !closed;
+      saveSettings();
+      if (!closed) FisiltiTimeline.rebuild();
+    });
+    if (S.settings.timelineOpen === false) $('tl-toggle').textContent = 'Zaman çizelgesi ▸';
+  }
+
   /* ================= arama ================= */
   function runSearch() {
     var q = $('search-box').value.trim();
@@ -671,6 +710,7 @@
 
         S.offsetSec = res.offsetSec || 0;
         S.segments = [];
+        S.energy = null; // yeni transkripsiyon — eski dalga formu geçersiz
         S.liveMode = true;
         renderTranscript();
         status('Transkripsiyon çalışıyor… (canlı akış)');
@@ -714,9 +754,11 @@
             });
             // Whisper'ın erken başlattığı segmentleri ses enerjisine göre hizala
             // (wav'a göre ms; sequence offset'i düşülüp geri eklenir)
+            var energyProf = null;
             if (finalSegs.length) {
               try {
                 var prof = W.wavRms(res.outPath, 50);
+                energyProf = prof;
                 if (prof) {
                   var rel = finalSegs.map(function (sg) {
                     return {
@@ -734,6 +776,12 @@
                 }
               } catch (eSnap) { /* hizalama isteğe bağlı; sessizce atla */ }
             }
+            // timeline dalga formu: enerji profili küçültülüp transkriptle saklanır
+            try {
+              if (energyProf && window.FisiltiTimeline) {
+                S.energy = FisiltiTimeline.compactEnergy(energyProf, S.offsetSec);
+              }
+            } catch (eEn) { /* dalga formu isteğe bağlı */ }
             if (finalSegs.length) S.segments = finalSegs;
             renderTranscript();
             persistTranscript(jobSeqId);
@@ -1503,6 +1551,7 @@
     loadSettings();
     restoreStyleInputs();
     wireTranscript();
+    wireTimeline();
     wireModels();
     wireSettings();
     wireUpdate();

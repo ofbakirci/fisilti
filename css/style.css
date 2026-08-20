@@ -180,6 +180,43 @@ label.field > span { min-width: 0; }
 .seg:hover .seg-add { visibility: visible; }
 .seg-add:hover { color: var(--text); background: #3d3d3d; }
 
+/* ---------- zaman çizelgesi ---------- */
+#timeline-wrap { flex: none; border-top: 1px solid var(--border); }
+#timeline-head { padding: 3px 10px; }
+#timeline { height: 78px; display: block; }
+#timeline-wrap.collapsed #timeline { display: none; }
+.tl-scroll {
+  position: relative; height: 100%; overflow-x: auto; overflow-y: hidden;
+  background: var(--bg-input);
+}
+.tl-content { position: relative; height: 100%; min-width: 100%; }
+.tl-canvas { position: absolute; top: 0; left: 0; height: 100%; pointer-events: none; }
+.tl-bar {
+  position: absolute; top: 16px; bottom: 4px;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  cursor: grab; overflow: hidden;
+  display: flex; align-items: flex-start;
+}
+.tl-bar.cur { background: rgba(45, 140, 235, 0.38); }
+.tl-bar.dragging { cursor: grabbing; opacity: 0.85; z-index: 5; }
+.tl-label {
+  flex: 1; padding: 1px 3px;
+  font-size: 9px; line-height: 1.2; color: var(--text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  pointer-events: none; user-select: none;
+}
+.tl-h {
+  flex: none; width: 7px; height: 100%;
+  cursor: ew-resize;
+}
+.tl-h:hover, .tl-bar.dragging .tl-h { background: var(--accent); opacity: 0.7; }
+.tl-playhead {
+  position: absolute; top: 0; bottom: 0; width: 1px;
+  background: var(--err); pointer-events: none; z-index: 6;
+}
+
 /* satır içi zaman düzenleme */
 .seg-time.tc-edit { width: auto; display: flex; gap: 3px; padding-top: 0; }
 .tc-in {

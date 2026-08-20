@@ -84,8 +84,19 @@
         <span class="hint">İpucu: satıra tıkla → video o ana gider. Çift tıkla → metni düzenle.<br>
         Zamana çift tıkla → başlangıç/bitişi elle gir (yalnız o satır kayar).<br>
         <b>+ Satır</b> → playhead'e yeni satır; satırın üzerine gel → <b>+</b> altına ekler.<br>
-        Metni tamamen silip onaylarsan satır silinir.</span>
+        Metni tamamen silip onaylarsan satır silinir.<br>
+        Alttaki zaman çizelgesinde barı sürükle → satır taşınır; kenarından çek → başlangıç/bitiş.</span>
       </div>
+    </div>
+
+    <div id="timeline-wrap">
+      <div class="row" id="timeline-head">
+        <button class="btn small" id="tl-toggle" title="Zaman çizelgesini aç/kapat">Zaman çizelgesi ▾</button>
+        <span class="hint" style="flex:1">bar sürükle = taşı · kenar = uzat/kısalt · boşluğa tıkla = sardır · ⌥+tekerlek = yakınlaştır</span>
+        <button class="btn small" id="tl-zoom-out" title="Uzaklaştır">−</button>
+        <button class="btn small" id="tl-zoom-in" title="Yakınlaştır">+</button>
+      </div>
+      <div id="timeline"></div>
     </div>
 
     <div class="row">
@@ -246,6 +257,7 @@
 <script src="js/captions.js"></script>
 <script src="js/prstyle.js"></script>
 <script src="js/whisper.js"></script>
+<script src="js/timeline.js"></script>
 <script src="js/main.js"></script>
 </body>
 </html>

@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head><meta charset="UTF-8"><title>TL Harness</title>
+<link rel="stylesheet" href="../css/style.css">
+<style>body{padding:10px} #timeline{height:78px} #log{font:11px monospace; color:#8dd600; white-space:pre-wrap; padding:8px}</style>
+</head>
+<body>
+<div id="timeline-wrap"><div id="timeline"></div></div>
+<div id="log"></div>
+<script src="../js/timeline.js"></script>
+<script>
+var segs = [
+  { t0: 1.0, t1: 3.2, text: 'böyle bir şey olabilir mi ya...' },
+  { t0: 3.5, t1: 5.0, text: 'Oğluşum' },
+  { t0: 6.2, t1: 9.8, text: 'stilli altyazı böyle olmaz dedim' },
+  { t0: 11.0, t1: 14.5, text: 'timeline ile her şey daha kolay' }
+];
+// sahte enerji: konuşma bölgelerinde yüksek
+var rms = [];
+for (var i = 0; i < 300; i++) {
+  var t = i * 0.1;
+  var talking = segs.some(function (s) { return t >= s.t0 && t <= s.t1; });
+  rms.push(talking ? 70 + Math.round(Math.random() * 30) : 5 + Math.round(Math.random() * 10));
+}
+var events = [];
+FisiltiTimeline.init({
+  container: document.getElementById('timeline'),
+  getSegments: function () { return segs; },
+  getEnergy: function () { return { offsetSec: 0, winMs: 100, rms: rms }; },
+  getDuration: function () { return 30; },
+  getFollow: function () { return false; },
+  isBusy: function () { return false; },
+  onSeek: function (s) { events.push('seek:' + s.toFixed(2)); render(); },
+  onChange: function (i, t0, t1) {
+    segs[i].t0 = t0; segs[i].t1 = t1;
+    events.push('change:' + i + ' ' + t0.toFixed(2) + '-' + t1.toFixed(2));
+    FisiltiTimeline.rebuild(); render();
+  },
+  onSelect: function (i) { events.push('select:' + i); render(); },
+  onEditText: function (i) { events.push('edit:' + i); render(); }
+});
+FisiltiTimeline.tick(4.2);
+function render() { document.getElementById('log').textContent = events.join('\n'); }
+
+// ---- sentetik sürükleme yardımcısı ----
+function fire(el, type, x, y) {
+  el.dispatchEvent(new MouseEvent(type, { bubbles: true, clientX: x, clientY: y, button: 0 }));
+}
+window.dragTest = function () {
+  var scroll = document.querySelector('.tl-scroll');
+  var bar0 = document.querySelector('.tl-bar[data-i="0"]');
+  var r = bar0.getBoundingClientRect();
+  // 1) gövdeden 60px sağa taşı (30pps → +2 sn)
+  fire(bar0, 'mousedown', r.left + r.width / 2, r.top + 20);
+  fire(document, 'mousemove', r.left + r.width / 2 + 60, r.top + 20);
+  fire(document, 'mouseup', r.left + r.width / 2 + 60, r.top + 20);
+  // 2) bar 2'nin sağ kenarını 30px uzat (+1 sn)
+  var bar2 = document.querySelector('.tl-bar[data-i="2"]');
+  var h = bar2.querySelector('.tl-h.r'); var hr = h.getBoundingClientRect();
+  fire(h, 'mousedown', hr.left + 3, hr.top + 20);
+  fire(document, 'mousemove', hr.left + 33, hr.top + 20);
+  fire(document, 'mouseup', hr.left + 33, hr.top + 20);
+  // 3) bar 1'e tıkla (sürüklemesiz) → seek + select
+  var bar1 = document.querySelector('.tl-bar[data-i="1"]');
+  var r1 = bar1.getBoundingClientRect();
+  fire(bar1, 'mousedown', r1.left + 5, r1.top + 20);
+  fire(document, 'mouseup', r1.left + 5, r1.top + 20);
+  render();
+  return events.join(' | ');
+};
+</script>
+</body>
+</html>

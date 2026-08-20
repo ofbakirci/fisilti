@@ -25,6 +25,9 @@ Dakika ücreti yok, abonelik yok, buluta giden ses yok.
 - Çift tıkla düzenle (kelime zamanları otomatik yeniden dağıtılır — kayma olmaz)
 - **Satır ekle**: `+ Satır` playhead'e yeni altyazı satırı açar; satırın üzerine gelince çıkan `+` altına ekler. Metni boşaltıp onaylayınca satır silinir
 - **Zamana çift tıkla**: başlangıç/bitişi elle gir — yalnız o satır kayar, kalan her şey yerinde durur
+- **Zaman çizelgesi**: transkriptin altında sürüklenebilir bar görünümü — barı çek: satır taşınır;
+  kenarından çek: başlangıç/bitiş ayarlanır; arkada ses dalga formu, konuşmanın gerçekte nerede
+  başladığını gösterir; boşluğa tıkla: video sardırılır; ⌥+tekerlek: yakınlaştır
 - Arama + önceki/sonraki; **bul-değiştir** (tek eşleşme veya tümü, geri al) — yanlış duyulan özel isimleri tek hamlede düzelt
 - Segmentleri sequence marker'ına dökme
 - **Sözlük** (Ayarlar): özel isim ve terimleri virgülle yaz, Whisper'a `--prompt` olarak gider; yanlış duyma baştan azalır
