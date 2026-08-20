@@ -1491,8 +1491,7 @@
     $('btn-add-line').addEventListener('click', addLineAtPlayhead);
     $('btn-add-markers').addEventListener('click', addMarkers);
     $('btn-make-captions').addEventListener('click', addCaptionTrack);
-    // "Stili Premiere'e kaydet" (saveStyleToPremiere) şimdilik UI'dan çekildi —
-    // randıman yeterli değil; kod duruyor, hazır olunca düğmeyi geri bağla.
+    $('btn-style-to-premiere').addEventListener('click', saveStyleToPremiere);
     $('btn-make-overlay').addEventListener('click', addOverlay);
     $('btn-export-srt').addEventListener('click', function () { exportFormat('srt'); });
     $('btn-export-vtt').addEventListener('click', function () { exportFormat('vtt'); });
