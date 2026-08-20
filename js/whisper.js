@@ -485,7 +485,10 @@ window.FisiltiWhisper = (function () {
   // (~15 sn), sonuç APP_DIR/fontmap.json'a cache'lenir.
   function fontMapPath() { return path.join(APP_DIR, 'fontmap.json'); }
   function loadFontMap() {
-    try { return JSON.parse(fs.readFileSync(fontMapPath(), 'utf8')); } catch (e) { return null; }
+    try {
+      var m = JSON.parse(fs.readFileSync(fontMapPath(), 'utf8'));
+      return (m && m.__v === 2) ? m : null; // eski/yanlış cache yeniden üretilir
+    } catch (e) { return null; }
   }
   function buildFontMap(cb) {
     var proc = cp.spawn('/usr/sbin/system_profiler', ['SPFontsDataType', '-json'], { env: SPAWN_ENV });
@@ -504,12 +507,16 @@ window.FisiltiWhisper = (function () {
             var key = fam.toLocaleLowerCase();
             if (!map[key]) map[key] = {};
             var rest = full.toLocaleLowerCase().replace(fam.toLocaleLowerCase(), '').trim();
-            var bold = /\bbold\b/.test(rest), italic = /\b(italic|oblique)\b/.test(rest);
-            var slot = bold && italic ? 'boldItalic' : bold ? 'bold' : italic ? 'italic' : (rest === '' || rest === 'regular' || rest === 'roman' ? 'regular' : null);
+            // TAM eşleşme şart: "condensed bold" gibi varyantlar bold slotunu kapmasın
+            var slot = rest === 'bold' ? 'bold' :
+                       (rest === 'italic' || rest === 'oblique') ? 'italic' :
+                       (rest === 'bold italic' || rest === 'bold oblique') ? 'boldItalic' :
+                       (rest === '' || rest === 'regular' || rest === 'roman') ? 'regular' : null;
             if (slot && !map[key][slot]) map[key][slot] = ps;
-            if (!map[key].any) map[key].any = ps;
+            if (!map[key].any || slot === 'regular') map[key].any = ps;
           });
         });
+        map.__v = 2; // eşleme kuralı değişince cache tazelensin
         ensureDirs();
         fs.writeFileSync(fontMapPath(), JSON.stringify(map));
         cb(map);

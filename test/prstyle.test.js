@@ -48,14 +48,14 @@ function readTree(blob) {
   const fill = color(tChar + cfo(2) + u32(tChar + cfo(2)));
   const stroke = color(tChar + cfo(21) + u32(tChar + cfo(21)));
   const bg = color(off(17));
-  const bgOpacity = f32(main + fo(12));
+  const bgOpacity = f32(main + fo(19));
   return { font, size, strokeW, fill, stroke, bg, bgOpacity };
 }
 
 t('buildBlob paneldeki stili aynen taşır', () => {
   const blob = P.buildBlob({
     font: 'HelveticaNeue-Bold', size: 230, fill: [52, 120, 246],
-    strokeW: 16, stroke: [0, 0, 0], c17: [10, 20, 30], f12: 90, b11: 1
+    strokeW: 16, stroke: [0, 0, 0], c17: [10, 20, 30], f19: 90, b11: 1
   });
   const r = readTree(blob);
   assert.strictEqual(r.font, 'HelveticaNeue-Bold');

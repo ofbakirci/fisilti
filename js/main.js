@@ -945,7 +945,8 @@
         strokeW: Math.round(st.outlineWidth * (H / 720) * 10) / 10,
         stroke: hexToRgb(st.outlineColor),
         c17: hexToRgb(st.backgroundColor),
-        f12: Math.round((st.backgroundAlpha != null ? st.backgroundAlpha : 1) * 100),
+        // arkaplan opaklığı r.0.19'dadır (DENEME4 diff'i, 2026-08-20); f12'ye dokunma
+        f19: Math.round((st.backgroundAlpha != null ? st.backgroundAlpha : 1) * 100),
         b11: st.backgroundEnabled ? 1 : 0
       });
       var b64 = PS.toBase64(blob);
