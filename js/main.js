@@ -1253,11 +1253,21 @@
     });
   }
 
+  // Proje medyası (overlay .mov, caption .srt) proje dosyasının yanında dursun:
+  // <proje dizini>/Fısıltı-OverlaySRT/. Proje kaydedilmemişse eski konumlara düşer.
+  function projectAssetDir() {
+    var pp = S.env && S.env.projectPath;
+    if (!pp || pp.indexOf('/') === -1) return null;
+    var dir = W.pathx.join(pp.substring(0, pp.lastIndexOf('/')), 'Fısıltı-OverlaySRT');
+    return W.ensureDir(dir) ? dir : null;
+  }
+
   function addCaptionTrack() {
     var blocks = ensureBlocksOrWarn();
     if (!blocks) return;
     var srt = C.toSRT(blocks);
-    var p = W.pathx.join(W.CACHE_DIR, 'fisilti_' + Date.now() + '.srt');
+    var srtDir = projectAssetDir() || W.CACHE_DIR;
+    var p = W.pathx.join(srtDir, 'fisilti_' + Date.now() + '.srt');
     W.writeFile(p, srt, true); // UTF-8 BOM — Premiere Türkçe karakterler için ister
     // stil arka planda Premiere'e taşınır — caption track eklemeyi bekletmez
     exportStyleToPremiere(function (name) {
@@ -1301,7 +1311,7 @@
     var assPath = W.pathx.join(W.CACHE_DIR, 'fisilti_' + Date.now() + '.ass');
     W.writeFile(assPath, ass, false);
     // .mov proje medyası olur — cache'e değil kalıcı overlays klasörüne
-    var outPath = W.pathx.join(W.OVERLAYS_DIR, 'fisilti_overlay_' + Date.now() + '.mov');
+    var outPath = W.pathx.join(projectAssetDir() || W.OVERLAYS_DIR, 'fisilti_overlay_' + Date.now() + '.mov');
     var durSec = blocks[blocks.length - 1].t1 / 1000 + 0.3;
 
     setBusy(true);

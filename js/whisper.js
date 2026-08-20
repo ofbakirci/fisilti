@@ -476,6 +476,9 @@ window.FisiltiWhisper = (function () {
   function listDir(p) {
     try { return fs.readdirSync(p); } catch (e) { return []; }
   }
+  function ensureDir(p) {
+    try { fs.mkdirSync(p, { recursive: true }); return true; } catch (e) { return false; }
+  }
   function writeTextFile(p, content) {
     fs.mkdirSync(path.dirname(p), { recursive: true });
     fs.writeFileSync(p, content, 'utf8');
@@ -710,7 +713,7 @@ window.FisiltiWhisper = (function () {
     isDevInstall: isDevInstall,
     pickColorNative: pickColorNative,
     transcribe: transcribe, renderOverlay: renderOverlay, wavRms: wavRms,
-    PR_STYLES_DIR: PR_STYLES_DIR, readTextFile: readTextFile, listDir: listDir,
+    PR_STYLES_DIR: PR_STYLES_DIR, readTextFile: readTextFile, listDir: listDir, ensureDir: ensureDir,
     writeTextFile: writeTextFile, loadFontMap: loadFontMap, buildFontMap: buildFontMap,
     resolvePostScriptName: resolvePostScriptName,
     writeFile: writeFile, readJsonSafe: readJsonSafe, writeJson: writeJson,

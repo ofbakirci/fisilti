@@ -43,6 +43,7 @@ Dakika ücreti yok, abonelik yok, buluta giden ses yok.
 
 **Altyazı**
 - Cümle blokları **veya** kelime kelime (viral/sosyal medya) modu
+- Overlay .mov ve caption .srt dosyaları proje dosyasının yanında **Fısıltı-OverlaySRT/** klasöründe tutulur (medya projeyle taşınır)
 - **Diyalog molası**: cümle bitip kısa bir duraksama girdiyse yeni altyazı — iki konuşmacının kısa cümleleri aynı altyazıya girmez
 - Netflix TR kurallarına uygun bölümleme: 42 karakter/satır, bağlaçla satır bitirmeme,
   cümle sonunda kırma, asgari süre, CPS (okuma hızı) uyarıları, Türkçe büyük harf (İ/ı)
