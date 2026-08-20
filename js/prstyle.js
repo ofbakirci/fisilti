@@ -107,16 +107,12 @@
     var t40 = emptyTable();
     setf(40, u32(t40 - (main + MO[40])));
 
+    // Kanallar HER ZAMAN açıkça yazılır. FlatBuffers'ta 255 varsayılanı yazmamak
+    // yalnız karakter renklerinde güvenli çıktı; arkaplan alanının varsayılanı
+    // beyaz değil — beyaz arkaplan "boş tablo" olunca gri/şeffaf render edildi.
     function colorTable(rgb) {
-      if (rgb[0] === 255 && rgb[1] === 255 && rgb[2] === 255) return emptyTable();
-      var pos = 4, fo = [], data = [];
-      for (var k = 0; k < 3; k++) {
-        if (rgb[k] === 255) fo.push(0);
-        else { fo.push(pos); data.push(rgb[k]); pos++; }
-      }
-      var tsz = 4 + data.length;
-      var vt = b.add(u16(10).concat(u16(tsz), u16(fo[0]), u16(fo[1]), u16(fo[2])));
-      var t = b.add(u32(0).concat(data));
+      var vt = b.add(u16(10).concat(u16(7), u16(4), u16(5), u16(6)));
+      var t = b.add(u32(0).concat([rgb[0], rgb[1], rgb[2]]));
       b.patch(t, u32((t - vt) >>> 0));
       return t;
     }

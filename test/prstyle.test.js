@@ -67,7 +67,7 @@ t('buildBlob paneldeki stili aynen taşır', () => {
   assert.strictEqual(Math.round(r.bgOpacity), 90);
 });
 
-t('buildBlob 255 kanalları yazmaz (default), beyaz boş tablo olur', () => {
+t('buildBlob beyaz dahil tüm kanalları açıkça yazar', () => {
   const blob = P.buildBlob({ fill: [255, 0, 128] });
   const r = readTree(blob);
   assert.deepStrictEqual(r.fill, [255, 0, 128]);
