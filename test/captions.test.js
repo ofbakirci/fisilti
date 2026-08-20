@@ -285,6 +285,32 @@ t('toASS akıllı sarma ve yatay kenar boşluğu yazar', () => {
   assert.ok(/,54,54,/.test(ass), 'MarginL/R = %5 × 1080 = 54');
 });
 
+/* ---- diyalog molası ---- */
+t('dialogGapMs: kısa cümle + duraksama = konuşmacı değişimi, ayrı blok', () => {
+  // "Ne oldu?" (0-1.1) [400ms mola] "Anlarız şimdi." — aynı whisper segmenti
+  const seg = [{ t0: 0, t1: 3000, text: '', words: mkWords([
+    [0, 500, 'Ne'], [500, 1100, 'oldu?'], [1500, 2200, 'Anlarız'], [2200, 3000, 'şimdi.']
+  ]) }];
+  const blocks = C.buildCaptions(seg, { gapSplitMs: 5000, dialogGapMs: 250 });
+  assert.strictEqual(blocks.length, 2, JSON.stringify(blocks.map(b => b.lines)));
+  assert.strictEqual(blocks[0].lines.join(' '), 'Ne oldu?');
+  assert.strictEqual(blocks[1].lines.join(' '), 'Anlarız şimdi.');
+});
+t('dialogGapMs: duraksama yoksa kısa cümle bölünmez (akıcı konuşma)', () => {
+  const seg = [{ t0: 0, t1: 3000, text: '', words: mkWords([
+    [0, 500, 'Ne'], [500, 1100, 'oldu?'], [1180, 2200, 'Anlarız'], [2200, 3000, 'şimdi.']
+  ]) }];
+  const blocks = C.buildCaptions(seg, { gapSplitMs: 5000, dialogGapMs: 250 });
+  assert.strictEqual(blocks.length, 1);
+});
+t('dialogGapMs: 0 verilince kural kapanır', () => {
+  const seg = [{ t0: 0, t1: 3000, text: '', words: mkWords([
+    [0, 500, 'Ne'], [500, 1100, 'oldu?'], [1500, 2200, 'Anlarız'], [2200, 3000, 'şimdi.']
+  ]) }];
+  const blocks = C.buildCaptions(seg, { gapSplitMs: 5000, dialogGapMs: 0 });
+  assert.strictEqual(blocks.length, 1);
+});
+
 /* ---- SRT/VTT içe aktarma ---- */
 t('fromSubtitle SRT çözer ve toSRT ile gidiş-dönüş korunur', () => {
   const blocks = [

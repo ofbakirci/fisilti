@@ -30,6 +30,8 @@
     maxCps: 21,         // uyarı eşiği (karakter/sn)
     splitOnPunct: true,
     splitOnSegment: true, // blok, transkript satırının sınırını aşmaz (konuşmacı karışmasın)
+    dialogGapMs: 250,   // cümle bitti + bu kadar ms duraksama = yeni blok (0 = kapalı);
+                        // aynı segment içindeki konuşmacı değişimlerini yakalar
     uppercase: false
   };
 
@@ -208,8 +210,12 @@
         var gap = w.t0 - last.t1;
         var candChars = charCount(cur.words.concat([w]));
         var candDur = w.t1 - cur.words[0].t0;
+        // Cümle sonunda böl: ya blok yeterince dolmuştur, ya da cümleden sonra
+        // belirgin bir duraksama vardır (konuşmacı değişimi — "Ne oldu?" gibi
+        // kısa cümlelerde karakter eşiği beklenmez).
         var punctBreak = o.splitOnPunct && STRONG_PUNCT.test(last.text) &&
-          charCount(cur.words) >= Math.min(12, o.maxCharsPerLine * 0.3);
+          (charCount(cur.words) >= Math.min(12, o.maxCharsPerLine * 0.3) ||
+           (o.dialogGapMs > 0 && gap >= o.dialogGapMs));
         // transkript satırı değişti → yeni blok (farklı konuşmacıların lafı karışmasın)
         var segBreak = o.splitOnSegment && w.segIdx !== undefined &&
           last.segIdx !== undefined && w.segIdx !== last.segIdx;

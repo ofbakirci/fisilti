@@ -1047,6 +1047,7 @@
       gapSplitMs: (parseFloat($('cap-gap').value) || 1) * 1000,
       splitOnPunct: $('cap-punct').checked,
       splitOnSegment: $('cap-splitseg').checked,
+      dialogGapMs: isNaN(parseInt($('cap-dialoggap').value, 10)) ? 250 : parseInt($('cap-dialoggap').value, 10),
       maxCps: parseInt($('cap-maxcps').value, 10) || 21,
       uppercase: $('st-upper').checked
     };
@@ -1734,6 +1735,7 @@
       $('cap-punct').checked = cp2.splitOnPunct !== false;
       $('cap-splitseg').checked = cp2.splitOnSegment !== false;
       $('cap-maxcps').value = cp2.maxCps || 21;
+      $('cap-dialoggap').value = (cp2.dialogGapMs != null) ? cp2.dialogGapMs : 250;
     }
     $('lang-select').value = S.settings.language || 'tr';
     $('opt-translate').checked = !!S.settings.translate;
@@ -1866,7 +1868,7 @@
     });
     $('cap-offset').addEventListener('input', function () { updateCaptionStats(); updatePreview(); });
     ['cap-mode', 'cap-maxchars', 'cap-maxlines', 'cap-maxdur', 'cap-mindur', 'cap-gap',
-     'cap-punct', 'cap-splitseg', 'cap-maxcps'].forEach(function (id) {
+     'cap-punct', 'cap-splitseg', 'cap-maxcps', 'cap-dialoggap'].forEach(function (id) {
       $(id).addEventListener('input', function () { updateCaptionStats(); saveSettings(); });
     });
 
