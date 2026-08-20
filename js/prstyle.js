@@ -76,6 +76,7 @@
     var f19v = o.f19 != null ? o.f19 : 88.0952;
     var f20v = o.f20 != null ? o.f20 : 10;
     var b11 = o.b11 != null ? o.b11 : 1;
+    var b5 = o.b5 != null ? o.b5 : 1; // char .5: faux bold (yapay kalınlaştırma)
 
     var b = new Builder();
     b.add(u32(12));                       // root tablo @12
@@ -152,7 +153,7 @@
     b.patch(tChar, u32((tChar - vtChar) >>> 0));
     b.patch(tPar + 8, u32(tChar - (tPar + 8)));
     function setc(field, bytes) { b.patch(tChar + CO[field], bytes); }
-    setc(1, f32(size)); setc(5, [1]); setc(6, f32(strokeW)); setc(24, u32(2));
+    setc(1, f32(size)); setc(5, [b5 ? 1 : 0]); setc(6, f32(strokeW)); setc(24, u32(2));
     var t2 = colorTable(fill); setc(2, u32(t2 - (tChar + CO[2])));
     var t21 = colorTable(stroke); setc(21, u32(t21 - (tChar + CO[21])));
     var t23 = colorTable(c23); setc(23, u32(t23 - (tChar + CO[23])));

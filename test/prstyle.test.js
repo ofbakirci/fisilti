@@ -67,6 +67,17 @@ t('buildBlob paneldeki stili aynen taşır', () => {
   assert.strictEqual(Math.round(r.bgOpacity), 90);
 });
 
+t('buildBlob b5 (faux bold) bayrağını taşır', () => {
+  const on = P.buildBlob({ b5: 1 }), off = P.buildBlob({ b5: 0 });
+  // char tablosundaki .5 baytı: iki blob yalnız o baytta ayrışmalı
+  assert.strictEqual(on.length, off.length);
+  const diffs = [];
+  for (let i = 0; i < on.length; i++) if (on[i] !== off[i]) diffs.push(i);
+  assert.strictEqual(diffs.length, 1, 'tek bayt farklı olmalı: ' + diffs);
+  assert.strictEqual(on[diffs[0]], 1);
+  assert.strictEqual(off[diffs[0]], 0);
+});
+
 t('buildBlob beyaz dahil tüm kanalları açıkça yazar', () => {
   const blob = P.buildBlob({ fill: [255, 0, 128] });
   const r = readTree(blob);

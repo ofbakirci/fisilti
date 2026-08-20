@@ -938,8 +938,13 @@
     var map = W.loadFontMap();
     function go(fontMap) {
       var ps = W.resolvePostScriptName(st.fontFamily, st.bold, st.italic, fontMap) || st.fontFamily;
+      // Kalınlık gerçek kesimle geliyorsa yapay kalınlaştırma (faux bold) kapalı
+      // kalmalı — ikisi üst üste binince harfler ve konturlar şişiyor.
+      var hasRealBold = /bold/i.test(ps);
+      var fauxBold = st.bold && !hasRealBold ? 1 : 0;
       var blob = PS.buildBlob({
         font: ps,
+        b5: fauxBold,
         size: Math.max(8, Math.round(H * st.fontSizePct / 100)),
         fill: hexToRgb(st.textColor),
         strokeW: Math.round(st.outlineWidth * (H / 720) * 10) / 10,
