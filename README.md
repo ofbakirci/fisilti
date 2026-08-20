@@ -86,7 +86,7 @@ brew install whisper-cpp ffmpeg
 
 - Ses dışa aktarımı `exportAsMediaDirect` ile bloklu çalışır (AME gerekmez).
 - Caption track'in görsel stili Premiere API'sinde açık değil (Adobe'nin resmi cevabı);
-  stil için Essential Graphics > Track Style kullan ya da stilli overlay üret.
+  stil için caption seçiliyken Özellikler (Properties) paneli > Track Style kullan ya da stilli overlay üret.
 - CEP, Adobe'nin planına göre ~Eylül 2026'ya dek destekli; sonrası için UXP portu gerekir.
 - Loglar: `~/Library/Application Support/Fisilti/logs/`
 - Panel hata ayıklama: Premiere açıkken Chrome'da `http://localhost:8090`
