@@ -23,6 +23,8 @@
     overlayProc: null,
     downloads: {},             // key -> download handle
     ffmpegDl: null,            // aktif ffmpeg indirmesi
+    updateDl: null,            // aktif güncelleme indirmesi
+    pendingUpdate: null,       // checkUpdate sonucu (yeni sürüm varsa)
     pollTimer: null,
     lastPlayheadSec: 0,        // "+ Satır" playhead konumuna ekler
     currentSegIdx: -1,
@@ -1165,9 +1167,56 @@
     $('btn-open-logs').addEventListener('click', function () { W.openInFinder(W.LOG_DIR); });
 
     var v = W.versions();
-    $('debug-info').innerHTML = 'Node ' + escapeHtml(v.node || '?') +
+    var ver = W.currentVersion();
+    $('debug-info').innerHTML = (ver ? 'Fısıltı ' + escapeHtml(ver) + ' · ' : '') +
+      'Node ' + escapeHtml(v.node || '?') +
       (v.whisper ? ' · ' + escapeHtml(v.whisper) : '') +
       '<br>Eklenti: ' + escapeHtml(EXT_PATH);
+  }
+
+  /* ================= sürüm denetimi & güncelleme ================= */
+  function checkForUpdate(auto) {
+    $('update-info').textContent = 'Denetleniyor…';
+    W.checkUpdate(function (res) {
+      if (!res) {
+        $('update-info').textContent = auto ? '—' : 'Denetlenemedi — ağ bağlantısını kontrol et.';
+        return;
+      }
+      if (res.newer) {
+        S.pendingUpdate = res;
+        $('update-info').textContent = 'Yeni sürüm var: ' + res.latest + ' (kurulu: ' + res.current + ')';
+        $('btn-do-update').style.display = '';
+        if (auto) status('Yeni sürüm var: ' + res.latest + ' — Ayarlar sekmesinden Güncelle', 'ok');
+      } else {
+        $('update-info').textContent = 'Güncel (' + res.current + ')';
+        $('btn-do-update').style.display = 'none';
+      }
+    });
+  }
+  function wireUpdate() {
+    $('btn-check-update').addEventListener('click', function () { checkForUpdate(false); });
+    $('btn-do-update').addEventListener('click', function () {
+      if (!S.pendingUpdate || S.updateDl) return;
+      var btn = this;
+      btn.disabled = true;
+      status('Güncelleme indiriliyor: ' + S.pendingUpdate.latest + '…');
+      progress(0);
+      S.updateDl = W.selfUpdate(S.pendingUpdate.url, {
+        onProgress: progress,
+        onDone: function (ver) {
+          S.updateDl = null; btn.disabled = false; progress(null);
+          $('update-info').textContent = 'Kuruldu: ' + ver + ' — paneli kapatıp aç.';
+          $('btn-do-update').style.display = 'none';
+          status('Güncellendi → ' + ver + ' ✓ Paneli kapatıp açınca yeni sürüm çalışır.', 'ok');
+        },
+        onError: function (msg) {
+          S.updateDl = null; btn.disabled = false; progress(null);
+          $('update-info').textContent = msg;
+          status(msg, 'error');
+        },
+        onCancel: function () { S.updateDl = null; btn.disabled = false; progress(null); }
+      });
+    });
   }
 
   /* ================= renk seçici =================
@@ -1192,6 +1241,7 @@
     pop.id = 'color-pop';
     pop.style.display = 'none';
     pop.innerHTML = '<div class="swatches"></div>' +
+      '<button class="btn small" id="color-pop-eye" title="Ekranın herhangi bir yerinden renk örnekle">Damlalık — ekrandan seç</button>' +
       '<div class="hexrow"><input type="text" id="color-pop-hex" maxlength="7" spellcheck="false">' +
       '<button class="btn small" id="color-pop-ok">Tamam</button></div>';
     document.body.appendChild(pop);
@@ -1238,6 +1288,25 @@
         show(input);
       });
     });
+    // Damlalık: gömülü sistem örnekleyicisi (NSColorSampler) — imleçte büyüteç
+    // lupu açılır, tıklanan pikseli verir. (Chromium EyeDropper API'si bilerek
+    // kullanılmıyor: CEP'in CEF'inde yüzeyi olsa da arayüzü yok — promise asılı
+    // kalıyor; çalışsaydı da yalnız panelin kendi içinden örnekleyebilirdi.)
+    var picking = false;
+    $('color-pop-eye').addEventListener('click', function () {
+      var tgt = target;
+      if (!tgt || picking) return;
+      picking = true;
+      status('Damlalık açık — ekranda istediğin renge tıkla (Esc: vazgeç).', '');
+      W.pickColorNative(tgt.value, function (hex) {
+        picking = false;
+        if (!hex) { status('hazır'); return; } // iptal
+        target = tgt; // seçim sırasında popover kapanmış olabilir — hedefi geri bağla
+        apply(hex, true);
+        status('Renk uygulandı: ' + hex, 'ok');
+      });
+    });
+
     sw.addEventListener('click', function (ev) {
       var b = ev.target.closest('.swatch');
       if (b) apply(b.getAttribute('data-c'), true);
@@ -1317,6 +1386,7 @@
     wireTranscript();
     wireModels();
     wireSettings();
+    wireUpdate();
     wireColorPickers();
 
     // sekmeler
@@ -1382,6 +1452,7 @@
       if (S.proc) S.proc.cancel();
       if (S.overlayProc) S.overlayProc.cancel();
       if (S.ffmpegDl) S.ffmpegDl.cancel();
+      if (S.updateDl) S.updateDl.cancel();
       Object.keys(S.downloads).forEach(function (k) { S.downloads[k].cancel(); });
     });
 
@@ -1395,6 +1466,8 @@
     } else {
       status('hazır');
     }
+    // sessiz sürüm denetimi — yalnız yeni sürüm varsa ses çıkarır
+    setTimeout(function () { checkForUpdate(true); }, 3000);
   }
 
   // localhost:8090 debug konsolu için küçük kanca (üretimde zararsız)

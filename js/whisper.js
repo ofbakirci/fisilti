@@ -236,6 +236,98 @@ window.FisiltiWhisper = (function () {
     return { cancel: function () { try { proc.kill('SIGKILL'); } catch (e) {} } };
   }
 
+  /* ---------------- sürüm denetimi & içerden güncelleme ----------------
+   * zxp = zip; imza dosyaları (META-INF) içeriğin parçasıdır, açınca geçerli
+   * kalır. Panel yeni zxp'yi indirip kendi klasörünün üstüne açar; sonrasında
+   * paneli kapatıp açmak yeter. Dev kurulumu (symlink) korunur.
+   */
+  var RELEASES_API = 'https://api.github.com/repos/ofbakirci/fisilti/releases/latest';
+
+  function currentVersion() {
+    try {
+      var xml = fs.readFileSync(path.join(EXT_DIR, 'CSXS', 'manifest.xml'), 'utf8');
+      var m = /ExtensionBundleVersion="([^"]+)"/.exec(xml);
+      return m ? m[1] : null;
+    } catch (e) { return null; }
+  }
+  function cmpVersions(a, b) { // a > b → 1, eşit → 0, küçük → -1
+    var pa = String(a).split('.'), pb = String(b).split('.');
+    for (var i = 0; i < 3; i++) {
+      var d = (parseInt(pa[i], 10) || 0) - (parseInt(pb[i], 10) || 0);
+      if (d) return d > 0 ? 1 : -1;
+    }
+    return 0;
+  }
+  function checkUpdate(cb) {
+    var proc = cp.spawn('/usr/bin/curl', ['-sL', '-f', '--max-time', '10', RELEASES_API], { env: SPAWN_ENV });
+    var buf = '';
+    proc.stdout.on('data', function (c) { buf += c.toString(); });
+    proc.on('error', function () { cb(null); });
+    proc.on('close', function (code) {
+      if (code !== 0) { cb(null); return; }
+      try {
+        var rel = JSON.parse(buf);
+        var latest = String(rel.tag_name || '').replace(/^v/, '');
+        var asset = (rel.assets || []).filter(function (a) { return /\.zxp$/i.test(a.name); })[0];
+        var cur = currentVersion();
+        if (!latest || !asset || !cur) { cb(null); return; }
+        cb({ current: cur, latest: latest, url: asset.browser_download_url,
+             newer: cmpVersions(latest, cur) > 0 });
+      } catch (e) { cb(null); }
+    });
+  }
+  function selfUpdate(url, cbs) {
+    ensureDirs();
+    cbs = cbs || {};
+    function fail(msg) { if (cbs.onError) cbs.onError(msg); return null; }
+    // rsync --delete hedefi eklenti klasörü olmalı — başka bir yolu asla silme
+    if (!EXT_DIR || EXT_DIR.indexOf('com.ofb.fisilti') === -1) {
+      return fail('Geliştirici kurulumu — panel kendini güncellemez, git pull kullan.');
+    }
+    try {
+      if (fs.lstatSync(EXT_DIR).isSymbolicLink()) {
+        return fail('Geliştirici kurulumu (symlink) — git pull ile güncelle.');
+      }
+      fs.accessSync(EXT_DIR, fs.constants.W_OK);
+    } catch (e) {
+      return fail('Eklenti klasörü yazılabilir değil (yönetici kurulumu?) — zxp\'yi elle kur.');
+    }
+    var tmpZxp = path.join(CACHE_DIR, 'update.zxp');
+    var tmpDir = path.join(CACHE_DIR, 'update_stage');
+    var proc = cp.spawn('/usr/bin/curl', ['-L', '-f', '--progress-bar', '-o', tmpZxp, url], { env: SPAWN_ENV });
+    var lastPct = -1;
+    proc.stderr.on('data', function (chunk) {
+      var matches = chunk.toString().match(/(\d+(?:[.,]\d+)?)%/g);
+      if (matches && matches.length) {
+        var pct = parseFloat(matches[matches.length - 1]);
+        if (pct !== lastPct) { lastPct = pct; if (cbs.onProgress) cbs.onProgress(pct); }
+      }
+    });
+    proc.on('error', function (e) { fail('curl çalıştırılamadı: ' + e.message); });
+    proc.on('close', function (code) {
+      if (code !== 0) {
+        try { fs.unlinkSync(tmpZxp); } catch (e0) {}
+        if (code === null) { if (cbs.onCancel) cbs.onCancel(); }
+        else fail('Güncelleme indirilemedi (curl kod ' + code + ')');
+        return;
+      }
+      try { cp.spawnSync('/bin/rm', ['-rf', tmpDir], { env: SPAWN_ENV }); } catch (e1) {}
+      var un = cp.spawnSync('/usr/bin/unzip', ['-oq', tmpZxp, '-d', tmpDir], { env: SPAWN_ENV });
+      try { fs.unlinkSync(tmpZxp); } catch (e2) {}
+      // paket sağlaması: manifest yoksa bozuk arşivle mevcut kurulumu ezme
+      if (un.status !== 0 || !fs.existsSync(path.join(tmpDir, 'CSXS', 'manifest.xml'))) {
+        fail('Güncelleme arşivi açılamadı ya da bozuk.'); return;
+      }
+      var rs = cp.spawnSync('/usr/bin/rsync', ['-a', '--delete', tmpDir + '/', EXT_DIR + '/'], { env: SPAWN_ENV });
+      cp.spawnSync('/bin/rm', ['-rf', tmpDir], { env: SPAWN_ENV });
+      if (rs.status !== 0) { fail('Dosyalar kopyalanamadı (rsync kod ' + rs.status + ')'); return; }
+      makeRunnable(path.join(EXT_DIR, 'bin', 'whisper-cli'));
+      try { cp.spawnSync('/usr/bin/xattr', ['-dr', 'com.apple.quarantine', EXT_DIR], { env: SPAWN_ENV }); } catch (e3) {}
+      if (cbs.onDone) cbs.onDone(currentVersion());
+    });
+    return { cancel: function () { try { proc.kill('SIGKILL'); } catch (e) {} } };
+  }
+
   /* ---------------- transkripsiyon ----------------
    * opts: { wavPath, modelPath, whisperPath, language, translate, threads,
    *         vad, vadModelPath, prompt }
@@ -410,6 +502,49 @@ window.FisiltiWhisper = (function () {
     return { cancel: function () { cancelled = true; try { proc.kill('SIGTERM'); } catch (e) {} } };
   }
 
+  /* ---------------- ekrandan renk seçme (sistem damlalığı) ----------------
+   * Gömülü fisilti-eyedropper (NSColorSampler): imleçte büyüteç lupu açılır,
+   * tıklanan pikselin hex'ini basar. Ekran kaydı izni gerekmez, pencere yok —
+   * arkada kalma derdi de yok. Esc: kod 1, çıktı yok.
+   * Yardımcı yoksa/çalışmazsa osascript "choose color" paneline düşülür.
+   * cb(hex | null) — iptalde null.
+   */
+  function pickColorNative(defaultHex, cb) {
+    var helper = EXT_DIR ? path.join(EXT_DIR, 'bin', 'fisilti-eyedropper') : null;
+    if (helper && fs.existsSync(helper)) {
+      makeRunnable(helper);
+      cp.execFile(helper, [], { env: SPAWN_ENV, timeout: 300000 }, function (err, stdout) {
+        var m = /#[0-9A-F]{6}/i.exec(String(stdout || ''));
+        if (!err && m) { cb(m[0].toUpperCase()); return; }
+        if (err && err.code === 1) { cb(null); return; } // kullanıcı vazgeçti (Esc)
+        pickColorPanel(defaultHex, cb); // başlatılamadı/çöktü → panel
+      });
+      return;
+    }
+    pickColorPanel(defaultHex, cb);
+  }
+  // Geri düşüş: yerel renk paneli. Kanal değerleri 16 bittir (0–65535).
+  function pickColorPanel(defaultHex, cb) {
+    var m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(defaultHex || '');
+    var d = m ? [parseInt(m[1], 16) * 257, parseInt(m[2], 16) * 257, parseInt(m[3], 16) * 257]
+              : [65535, 65535, 65535];
+    cp.execFile('/usr/bin/osascript',
+      // "tell me to activate": panel öne gelmeye çalışsın
+      ['-e', 'tell me to activate', '-e', 'choose color default color {' + d.join(', ') + '}'],
+      { env: SPAWN_ENV, timeout: 300000 },
+      function (err, stdout) {
+        if (err) { cb(null); return; } // iptal (-128) dahil
+        var nums = String(stdout).match(/\d+/g);
+        if (!nums || nums.length < 3) { cb(null); return; }
+        var hex = '#' + nums.slice(0, 3).map(function (v) {
+          var c = Math.max(0, Math.min(255, Math.round(parseInt(v, 10) / 257)));
+          var h = c.toString(16).toUpperCase();
+          return h.length === 1 ? '0' + h : h;
+        }).join('');
+        cb(hex);
+      });
+  }
+
   /* ---------------- dosya yardımcıları ---------------- */
   function writeFile(p, content, withBom) {
     ensureDirs();
@@ -459,6 +594,8 @@ window.FisiltiWhisper = (function () {
     listModels: listModels, findModelFile: findModelFile, findVadModel: findVadModel,
     downloadModel: downloadModel, deleteModel: deleteModel,
     detectWhisper: detectWhisper, detectFfmpeg: detectFfmpeg, downloadFfmpeg: downloadFfmpeg,
+    currentVersion: currentVersion, checkUpdate: checkUpdate, selfUpdate: selfUpdate,
+    pickColorNative: pickColorNative,
     transcribe: transcribe, renderOverlay: renderOverlay, wavRms: wavRms,
     writeFile: writeFile, readJsonSafe: readJsonSafe, writeJson: writeJson,
     cleanCache: cleanCache, openInFinder: openInFinder, versions: versions

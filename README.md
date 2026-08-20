@@ -56,6 +56,9 @@ Dakika ücreti yok, abonelik yok, buluta giden ses yok.
 3. Premiere Pro'yu (yeniden) başlat → **Window > Extensions > Fısıltı — Whisper Altyazı**
 4. Panelin **Modeller** sekmesinden bir model indir (Türkçe için `large-v3-turbo` önerilir). Bitti.
 
+Sonraki sürümler için tekrar indirme gerekmez: panel açılışta yeni sürümü denetler,
+**Ayarlar > Güncelleme > Güncelle** tek tıkla kurar (paneli kapatıp açmak yeter).
+
 Whisper motoru eklentinin içinde gömülü gelir — Terminal, Homebrew, hiçbir şey gerekmez.
 Yalnızca "Stilli overlay" özelliği ffmpeg ister; o da panelden kurulur:
 **Ayarlar > ffmpeg > İndir** statik derlemeyi tek tıkla indirir (brew/Xcode gerekmez).

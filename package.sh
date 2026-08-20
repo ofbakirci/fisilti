@@ -55,12 +55,15 @@ rsync -a "$ROOT/" "$STAGE/" \
   --exclude "dist" --exclude "test" --exclude "*.log" \
   --exclude "install.sh" --exclude "package.sh" --exclude ".DS_Store"
 
-# gömülü binary'nin exec biti staging'de korunur (zip'e exec bilgisi girmese de
+# gömülü binary'lerin exec biti staging'de korunur (zip'e exec bilgisi girmese de
 # panel ilk çalıştırmada chmod yapar)
-if [ -f "$STAGE/bin/whisper-cli" ]; then
-  chmod +x "$STAGE/bin/whisper-cli"
-  echo "  gömülü whisper-cli: $(du -h "$STAGE/bin/whisper-cli" | cut -f1) ($(lipo -archs "$STAGE/bin/whisper-cli" 2>/dev/null || echo '?'))"
-else
+for b in "$STAGE"/bin/*; do
+  [ -f "$b" ] || continue
+  case "$(basename "$b")" in *.txt) continue;; esac
+  chmod +x "$b"
+  echo "  gömülü $(basename "$b"): $(du -h "$b" | cut -f1) ($(lipo -archs "$b" 2>/dev/null || echo '?'))"
+done
+if [ ! -f "$STAGE/bin/whisper-cli" ]; then
   echo "  UYARI: bin/whisper-cli yok — paket, kullanıcıda whisper-cli kurulu olmasını bekleyecek"
 fi
 
