@@ -195,7 +195,9 @@
       if (!uids[old]) uids[old] = uuidFn();
       return 'Object' + kind + '="' + uids[old] + '"';
     });
-    s = s.replace(/<Name>[^<]*<\/Name>/, '<Name>' + name.replace(/[<&]/g, '') + '</Name>');
+    // stil adı StyleProjectItem içindedir; "Root Bin" gibi diğer Name'lere dokunma
+    s = s.replace(/(<StyleProjectItem[\s\S]*?)<Name>[^<]*<\/Name>/,
+      function (m, pre) { return pre + '<Name>' + name.replace(/[<&]/g, '') + '</Name>'; });
     var b64 = toBase64(blob);
     var wrapped = b64.replace(/(.{72})/g, '$1\n');
     // BinaryHash: ilk 12 bayt serbest, son 4 bayt büyük-endian blob uzunluğu (gözlem)
