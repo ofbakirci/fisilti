@@ -222,6 +222,18 @@ $._fst = (function () {
     } catch (e) { return err(e); }
   };
 
+  /* ---------- genel dosya importu (stil vb.) ---------- */
+  api.importFile = function (payloadJson) {
+    try {
+      var p = JSON.parse(payloadJson);
+      var destBin = app.project.getInsertionBin();
+      var prevCount = destBin.children.numItems;
+      var imported = app.project.importFiles([p.path], true, destBin, false);
+      var newCount = destBin.children.numItems;
+      return ok({ imported: !!imported, added: newCount - prevCount });
+    } catch (e) { return err(e); }
+  };
+
   /* ---------- overlay videosunu en üste yerleştir ---------- */
   api.importOverlay = function (payloadJson) {
     try {

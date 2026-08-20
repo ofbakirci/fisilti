@@ -284,6 +284,18 @@ window.FisiltiWhisper = (function () {
       return xml.indexOf('com.ofb.fisilti') !== -1;
     } catch (e) { return false; }
   }
+  // POSIX kabuk için tek-tırnak kaçışı
+  function shq(s) { return "'" + String(s).replace(/'/g, "'\\''") + "'"; }
+  // Kabuk komutunu macOS'un standart yönetici onayı penceresiyle çalıştırır
+  // (şifreyi sistem alır, panel görmez). true = başarılı.
+  function adminShell(cmd) {
+    var script = 'do shell script "' +
+      cmd.replace(/\\/g, '\\\\').replace(/"/g, '\\"') +
+      '" with administrator privileges';
+    var r = cp.spawnSync('/usr/bin/osascript', ['-e', script], { env: SPAWN_ENV });
+    return r.status === 0;
+  }
+
   // Geliştirici kurulumu mu? (symlink ya da doğrudan repo'dan koşum — .git var)
   // ZXP kurulumlarında .git yoktur (package.sh dışlar), symlink de olmaz.
   function isDevInstall() {
@@ -306,11 +318,10 @@ window.FisiltiWhisper = (function () {
     if (isDevInstall()) {
       return fail('Geliştirici kurulumu — panel kendini güncellemez, git pull kullan.');
     }
-    try {
-      fs.accessSync(EXT_DIR, fs.constants.W_OK);
-    } catch (e) {
-      return fail('Eklenti klasörü yazılabilir değil (yönetici kurulumu?) — zxp\'yi elle kur.');
-    }
+    // Yönetici (/Library) kurulumu: klasör yazılamaz — kopyalama, sistemin
+    // standart yönetici onayı penceresiyle yapılır. Elle kurulum gerekmez.
+    var needsAdmin = false;
+    try { fs.accessSync(EXT_DIR, fs.constants.W_OK); } catch (e) { needsAdmin = true; }
     var tmpZxp = path.join(CACHE_DIR, 'update.zxp');
     var tmpDir = path.join(CACHE_DIR, 'update_stage');
     var proc = cp.spawn('/usr/bin/curl', ['-L', '-f', '--progress-bar', '-o', tmpZxp, url], { env: SPAWN_ENV });
@@ -337,11 +348,28 @@ window.FisiltiWhisper = (function () {
       if (un.status !== 0 || !fs.existsSync(path.join(tmpDir, 'CSXS', 'manifest.xml'))) {
         fail('Güncelleme arşivi açılamadı ya da bozuk.'); return;
       }
-      var rs = cp.spawnSync('/usr/bin/rsync', ['-a', '--delete', tmpDir + '/', EXT_DIR + '/'], { env: SPAWN_ENV });
+      var copied;
+      if (!needsAdmin) {
+        var rs = cp.spawnSync('/usr/bin/rsync', ['-a', '--delete', tmpDir + '/', EXT_DIR + '/'], { env: SPAWN_ENV });
+        copied = rs.status === 0;
+        if (copied) {
+          makeRunnable(path.join(EXT_DIR, 'bin', 'whisper-cli'));
+          try { cp.spawnSync('/usr/bin/xattr', ['-dr', 'com.apple.quarantine', EXT_DIR], { env: SPAWN_ENV }); } catch (e3) {}
+        }
+      } else {
+        // tek yönetici onayıyla: kopyala + exec bitleri + karantina temizliği
+        copied = adminShell(
+          '/usr/bin/rsync -a --delete ' + shq(tmpDir + '/') + ' ' + shq(EXT_DIR + '/') +
+          ' && /bin/chmod +x ' + shq(EXT_DIR + '/bin/') + '*' +
+          ' && /usr/bin/xattr -dr com.apple.quarantine ' + shq(EXT_DIR)
+        );
+      }
       cp.spawnSync('/bin/rm', ['-rf', tmpDir], { env: SPAWN_ENV });
-      if (rs.status !== 0) { fail('Dosyalar kopyalanamadı (rsync kod ' + rs.status + ')'); return; }
-      makeRunnable(path.join(EXT_DIR, 'bin', 'whisper-cli'));
-      try { cp.spawnSync('/usr/bin/xattr', ['-dr', 'com.apple.quarantine', EXT_DIR], { env: SPAWN_ENV }); } catch (e3) {}
+      if (!copied) {
+        fail(needsAdmin ? 'Yönetici onayı alınamadı — güncelleme uygulanmadı.'
+                        : 'Dosyalar kopyalanamadı (rsync hatası).');
+        return;
+      }
       if (cbs.onDone) cbs.onDone(currentVersion());
     });
     return { cancel: function () { try { proc.kill('SIGKILL'); } catch (e) {} } };
@@ -438,6 +466,64 @@ window.FisiltiWhisper = (function () {
   /* ---------------- ffmpeg: şeffaf ProRes 4444 altyazı overlay'i ----------------
    * opts: { ffmpegPath, assPath, width, height, fps, durationSec, outPath }
    */
+  /* ---------- Premiere metin stilleri ---------- */
+  // Premiere'in kullanıcı-geneli stil deposu ("Local styles" burada saklanır)
+  var PR_STYLES_DIR = path.join(HOME, 'Documents', 'Adobe', 'Common', 'Assets', 'Text Styles');
+
+  function readTextFile(p) {
+    try { return fs.readFileSync(p, 'utf8'); } catch (e) { return null; }
+  }
+  function listDir(p) {
+    try { return fs.readdirSync(p); } catch (e) { return []; }
+  }
+  function writeTextFile(p, content) {
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    fs.writeFileSync(p, content, 'utf8');
+  }
+
+  // Aile adı + kalın/italik → PostScript adı eşlemesi. system_profiler yavaştır
+  // (~15 sn), sonuç APP_DIR/fontmap.json'a cache'lenir.
+  function fontMapPath() { return path.join(APP_DIR, 'fontmap.json'); }
+  function loadFontMap() {
+    try { return JSON.parse(fs.readFileSync(fontMapPath(), 'utf8')); } catch (e) { return null; }
+  }
+  function buildFontMap(cb) {
+    var proc = cp.spawn('/usr/sbin/system_profiler', ['SPFontsDataType', '-json'], { env: SPAWN_ENV });
+    var buf = '';
+    proc.stdout.on('data', function (c) { buf += c; });
+    proc.on('error', function () { cb(null); });
+    proc.on('close', function (code) {
+      if (code !== 0) { cb(null); return; }
+      try {
+        var d = JSON.parse(buf);
+        var map = {};
+        (d.SPFontsDataType || []).forEach(function (f) {
+          (f.typefaces || []).forEach(function (t) {
+            var fam = t.family, ps = t._name, full = String(t.fullname || '');
+            if (!fam || !ps) return;
+            var key = fam.toLocaleLowerCase();
+            if (!map[key]) map[key] = {};
+            var rest = full.toLocaleLowerCase().replace(fam.toLocaleLowerCase(), '').trim();
+            var bold = /\bbold\b/.test(rest), italic = /\b(italic|oblique)\b/.test(rest);
+            var slot = bold && italic ? 'boldItalic' : bold ? 'bold' : italic ? 'italic' : (rest === '' || rest === 'regular' || rest === 'roman' ? 'regular' : null);
+            if (slot && !map[key][slot]) map[key][slot] = ps;
+            if (!map[key].any) map[key].any = ps;
+          });
+        });
+        ensureDirs();
+        fs.writeFileSync(fontMapPath(), JSON.stringify(map));
+        cb(map);
+      } catch (e) { cb(null); }
+    });
+  }
+  function resolvePostScriptName(family, bold, italic, map) {
+    if (!map) return null;
+    var e = map[String(family).toLocaleLowerCase()];
+    if (!e) return null;
+    return (bold && italic && e.boldItalic) || (bold && e.bold) || (italic && e.italic) ||
+           e.regular || e.any || null;
+  }
+
   /* ---------- WAV enerji profili (konuşma başlangıcı hizalama için) ---------- */
   // 16-bit PCM WAV (bizim EPR: mono 16 kHz) → pencere RMS dizisi. Başka format
   // ya da hata: null (çağıran hizalamayı atlar).
@@ -617,6 +703,9 @@ window.FisiltiWhisper = (function () {
     isDevInstall: isDevInstall,
     pickColorNative: pickColorNative,
     transcribe: transcribe, renderOverlay: renderOverlay, wavRms: wavRms,
+    PR_STYLES_DIR: PR_STYLES_DIR, readTextFile: readTextFile, listDir: listDir,
+    writeTextFile: writeTextFile, loadFontMap: loadFontMap, buildFontMap: buildFontMap,
+    resolvePostScriptName: resolvePostScriptName,
     writeFile: writeFile, readJsonSafe: readJsonSafe, writeJson: writeJson,
     cleanCache: cleanCache, openInFinder: openInFinder, versions: versions
   };

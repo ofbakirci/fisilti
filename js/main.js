@@ -909,12 +909,95 @@
     return blocks;
   }
 
+  /* ================= stil → Premiere ================= */
+  var PS = window.FisiltiPrStyle;
+
+  function hexToRgb(hex) {
+    var m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(String(hex || ''));
+    return m ? [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)] : [255, 255, 255];
+  }
+  function uuid4() {
+    var h = '0123456789abcdef', out = '';
+    for (var i = 0; i < 36; i++) {
+      if (i === 8 || i === 13 || i === 18 || i === 23) { out += '-'; continue; }
+      if (i === 14) { out += '4'; continue; }
+      var r = Math.floor(Math.random() * 16);
+      if (i === 19) r = (r & 3) | 8;
+      out += h[r];
+    }
+    return out;
+  }
+
+  // Panelin o anki stilinden Premiere metin stili üretir, yerel stil deposuna
+  // yazar ve projeye import etmeyi dener. cb(name|null, hata)
+  function exportStyleToPremiere(cb) {
+    if (!PS) { if (cb) cb(null, 'prstyle.js yüklenmedi'); return; }
+    var seq = S.env && S.env.seq;
+    var H = (seq && seq.height) || 1080;
+    var st = readStyle();
+    var map = W.loadFontMap();
+    function go(fontMap) {
+      var ps = W.resolvePostScriptName(st.fontFamily, st.bold, st.italic, fontMap) || st.fontFamily;
+      var blob = PS.buildBlob({
+        font: ps,
+        size: Math.max(8, Math.round(H * st.fontSizePct / 100)),
+        fill: hexToRgb(st.textColor),
+        strokeW: Math.round(st.outlineWidth * (H / 720) * 10) / 10,
+        stroke: hexToRgb(st.outlineColor),
+        c17: hexToRgb(st.backgroundColor),
+        f12: Math.round((st.backgroundAlpha != null ? st.backgroundAlpha : 1) * 100),
+        b11: st.backgroundEnabled ? 1 : 0
+      });
+      var b64 = PS.toBase64(blob);
+      // ad: içerik aynıysa mevcut adı kullan; değilse boştaki ilk "Fisilti N"
+      var name = null;
+      for (var n = 1; n < 50; n++) {
+        var cand = n === 1 ? 'Fisilti' : 'Fisilti ' + n;
+        var existing = W.readTextFile(W.pathx.join(W.PR_STYLES_DIR, cand + '.prtextstyle'));
+        if (existing === null) { name = cand; break; }
+        if (existing.replace(/\s/g, '').indexOf(b64) !== -1) { // aynı stil zaten kayıtlı
+          if (cb) cb(cand, null, true);
+          return;
+        }
+      }
+      if (!name) { if (cb) cb(null, 'stil deposu dolu (Fisilti 1-49)'); return; }
+      var tpl = W.readTextFile(W.pathx.join(EXT_PATH, 'payloads', 'style_template.prtextstyle'));
+      if (!tpl) { if (cb) cb(null, 'style_template.prtextstyle bulunamadı'); return; }
+      var doc = PS.makePrtextstyle(tpl, name, blob, uuid4);
+      var outPath = W.pathx.join(W.PR_STYLES_DIR, name + '.prtextstyle');
+      try { W.writeTextFile(outPath, doc); } catch (e) { if (cb) cb(null, String(e)); return; }
+      // projeye de import etmeyi dene (başarısızlık önemli değil — yerel stil yazıldı)
+      callHost('importFile', { path: outPath }, function (res) {
+        if (cb) cb(name, null, false, !!(res && res.ok && res.added > 0));
+      });
+    }
+    if (map) go(map);
+    else {
+      status('Font listesi çıkarılıyor (ilk sefer, ~15 sn)…');
+      W.buildFontMap(function (m) { go(m); });
+    }
+  }
+
+  function saveStyleToPremiere() {
+    setBusy(true);
+    exportStyleToPremiere(function (name, err2, already, imported) {
+      setBusy(false);
+      if (err2) { status('Stil kaydedilemedi: ' + err2, 'error'); return; }
+      if (already) status('Bu stil zaten kayıtlı: "' + name + '" — caption seç → Özellikler > Track Style ▾ / stil tarayıcısından uygula.', 'ok');
+      else status('Stil "' + name + '" Premiere\'e kaydedildi' + (imported ? ' (projeye de eklendi)' : '') + ' — caption seç → Özellikler > Track Style ▾ menüsünden seç.', 'ok');
+    });
+  }
+
   function addCaptionTrack() {
     var blocks = ensureBlocksOrWarn();
     if (!blocks) return;
     var srt = C.toSRT(blocks);
     var p = W.pathx.join(W.CACHE_DIR, 'fisilti_' + Date.now() + '.srt');
     W.writeFile(p, srt, true); // UTF-8 BOM — Premiere Türkçe karakterler için ister
+    // stil arka planda Premiere'e taşınır — caption track eklemeyi bekletmez
+    exportStyleToPremiere(function (name) {
+      if (name) status('Caption track + stil hazır: Track Style ▾ → "' + name + '".', 'ok');
+    });
     status('Caption track ekleniyor…');
     callHost('importSrtAsCaptions', { srtPath: p, startAtSec: 0 }, function (res) {
       if (res.ok) status('Caption track eklendi ✓ Stil: caption\'ı seç → Özellikler (Properties) panelinde Track Style.', 'ok');
@@ -1408,6 +1491,7 @@
     $('btn-add-line').addEventListener('click', addLineAtPlayhead);
     $('btn-add-markers').addEventListener('click', addMarkers);
     $('btn-make-captions').addEventListener('click', addCaptionTrack);
+    $('btn-style-to-premiere').addEventListener('click', saveStyleToPremiere);
     $('btn-make-overlay').addEventListener('click', addOverlay);
     $('btn-export-srt').addEventListener('click', function () { exportFormat('srt'); });
     $('btn-export-vtt').addEventListener('click', function () { exportFormat('vtt'); });
