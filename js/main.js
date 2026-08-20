@@ -22,7 +22,9 @@
     proc: null,                // aktif whisper süreci
     overlayProc: null,
     downloads: {},             // key -> download handle
+    ffmpegDl: null,            // aktif ffmpeg indirmesi
     pollTimer: null,
+    lastPlayheadSec: 0,        // "+ Satır" playhead konumuna ekler
     currentSegIdx: -1,
     programmaticScrollUntil: 0,
     userScrollUntil: 0,
@@ -149,7 +151,8 @@
   // işin BAŞLADIĞI sequence'ın dosyasına gider (yanlış dosyayı ezme koruması)
   function persistTranscript(seqIdOverride) {
     var id = seqIdOverride || (S.env && S.env.seq && S.env.seq.id);
-    if (!id || !S.segments.length) return;
+    if (!id) return;
+    // boş liste de yazılır — son satırın silinmesi kalıcı olmalı
     W.writeJson(transcriptFile(id), { segments: S.segments, savedAt: Date.now() });
   }
   function maybeLoadSavedTranscript(seqId) {
@@ -171,8 +174,9 @@
     }
     var html = S.segments.map(function (seg, i) {
       return '<div class="seg" data-i="' + i + '">' +
-        '<div class="seg-time">' + fmtTime(seg.t0) + '</div>' +
+        '<div class="seg-time" title="Çift tıkla: zamanı düzenle">' + fmtTime(seg.t0) + '</div>' +
         '<div class="seg-text">' + segTextHtml(seg) + '</div>' +
+        '<button class="seg-add" title="Altına yeni satır ekle">+</button>' +
         '</div>';
     }).join('');
     box.innerHTML = html;
@@ -270,6 +274,7 @@
           return;
         }
         var sec = Number(parts[1]) / 254016000000;
+        S.lastPlayheadSec = sec;
         if (S.segments.length && !S.liveMode) highlightPlayhead(sec);
       });
     }, S.settings.pollMs || 250);
@@ -288,6 +293,11 @@
       var segEl = ev.target.closest('.seg');
       if (!segEl) return;
       if (ev.target.isContentEditable) return;
+      if (ev.target.closest('.tc-edit')) return; // zaman düzenleme inputları seek yapmasın
+      if (ev.target.closest('.seg-add')) {
+        addLineAfter(+segEl.getAttribute('data-i'));
+        return;
+      }
       var seg = S.segments[+segEl.getAttribute('data-i')];
       if (!seg) return;
       // kelimeye tıklandıysa kelimenin zamanına git
@@ -300,15 +310,15 @@
     });
 
     box.addEventListener('dblclick', function (ev) {
+      var timeEl = ev.target.closest('.seg-time');
+      if (timeEl && !timeEl.querySelector('input')) {
+        openTimeEditor(timeEl.closest('.seg'));
+        return;
+      }
       var textEl = ev.target.closest('.seg-text');
       if (!textEl) return;
       var segEl = textEl.closest('.seg');
-      var seg = S.segments[+segEl.getAttribute('data-i')];
-      if (!seg) return;
-      textEl.textContent = seg.text; // düz metne çevir (kelime span'ları olmadan)
-      textEl.setAttribute('contenteditable', 'true');
-      textEl.focus();
-      document.execCommand('selectAll', false, null);
+      openTextEditor(+segEl.getAttribute('data-i'));
     });
 
     box.addEventListener('keydown', function (ev) {
@@ -327,7 +337,12 @@
       var seg = S.segments[i];
       textEl.removeAttribute('contenteditable');
       var newText = textEl.textContent.trim();
-      if (seg && newText && newText !== seg.text) {
+      if (seg && !newText) {
+        // boş bırakılan satır silinir (yeni eklenen satırdan vazgeçme dahil)
+        S.segments.splice(i, 1);
+        persistTranscript();
+        status('Satır silindi.', '');
+      } else if (seg && newText !== seg.text) {
         setSegmentText(i, newText);
         persistTranscript();
       }
@@ -369,6 +384,130 @@
     seg.text = newText;
     var est = C.estimateWords({ t0: seg.t0 * 1000, t1: seg.t1 * 1000, text: newText });
     seg.words = est.map(function (w) { return { t0: w.t0 / 1000, t1: w.t1 / 1000, text: w.text }; });
+  }
+
+  function openTextEditor(i) {
+    var textEl = $('transcript').querySelector('.seg[data-i="' + i + '"] .seg-text');
+    var seg = S.segments[i];
+    if (!textEl || !seg) return;
+    textEl.textContent = seg.text; // düz metne çevir (kelime span'ları olmadan)
+    textEl.setAttribute('contenteditable', 'true');
+    textEl.focus();
+    document.execCommand('selectAll', false, null);
+  }
+
+  /* ================= satır ekleme & zaman düzenleme ================= */
+  // "1:23.4", "01:23,4", "83.2", "0:01:23.500" gibi biçimleri saniyeye çevirir
+  function parseTc(str) {
+    str = String(str || '').trim().replace(',', '.');
+    if (!str) return null;
+    var parts = str.split(':');
+    if (parts.length > 3) return null;
+    var sec = 0;
+    for (var i = 0; i < parts.length; i++) {
+      if (!/^\d+(\.\d+)?$/.test(parts[i])) return null;
+      sec = sec * 60 + parseFloat(parts[i]);
+    }
+    return sec;
+  }
+  function fmtTc(sec) {
+    sec = Math.max(0, sec);
+    var h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60);
+    var s = Math.round((sec % 60) * 10) / 10;
+    var sTxt = (s < 10 ? '0' : '') + s.toFixed(1);
+    function p(n) { return (n < 10 ? '0' : '') + n; }
+    return (h ? h + ':' + p(m) : String(m)) + ':' + sTxt;
+  }
+
+  // Yalnız BU satırın zamanını değiştirir — diğer satırlar yerinde kalır
+  // (tümünü kaydırmak için Altyazı sekmesindeki "Zaman kaydırma" var).
+  function applySegTime(i, t0, t1) {
+    var seg = S.segments[i];
+    if (!seg) return;
+    var old0 = seg.t0, old1 = seg.t1;
+    if (seg.words && seg.words.length && old1 > old0) {
+      // kelime zamanlarını yeni aralığa oransal taşı
+      var k = (t1 - t0) / (old1 - old0);
+      seg.words.forEach(function (w) {
+        w.t0 = t0 + (w.t0 - old0) * k;
+        w.t1 = t0 + (w.t1 - old0) * k;
+      });
+    }
+    seg.t0 = t0; seg.t1 = t1;
+    S.segments.sort(function (a, b) { return a.t0 - b.t0; }); // sırası değişmiş olabilir
+    renderTranscript();
+    persistTranscript();
+    updateCaptionStats();
+    if (S.search.q) runSearch();
+    status('Zaman güncellendi: ' + fmtTc(t0) + ' – ' + fmtTc(t1), 'ok');
+  }
+
+  function openTimeEditor(segEl) {
+    if (!segEl) return;
+    var i = +segEl.getAttribute('data-i');
+    var seg = S.segments[i];
+    var timeEl = segEl.querySelector('.seg-time');
+    if (!seg || !timeEl) return;
+    timeEl.classList.add('tc-edit');
+    timeEl.removeAttribute('title');
+    timeEl.innerHTML = '<input class="tc-in" title="Başlangıç" value="' + fmtTc(seg.t0) + '">' +
+      '<input class="tc-in" title="Bitiş" value="' + fmtTc(seg.t1) + '">';
+    var ins = timeEl.querySelectorAll('input');
+    var done = false;
+    function commit() {
+      if (done) return; done = true;
+      var t0 = parseTc(ins[0].value), t1 = parseTc(ins[1].value);
+      if (t0 === null || t1 === null || t1 <= t0) {
+        status('Geçersiz zaman — örnek: 1:23.4, bitiş > başlangıç olmalı.', 'error');
+        renderTranscript();
+        return;
+      }
+      applySegTime(i, t0, t1);
+    }
+    function cancel() {
+      if (done) return; done = true;
+      renderTranscript();
+    }
+    timeEl.addEventListener('keydown', function (ev) {
+      ev.stopPropagation();
+      if (ev.key === 'Enter') { ev.preventDefault(); commit(); }
+      else if (ev.key === 'Escape') { ev.preventDefault(); cancel(); }
+    });
+    timeEl.addEventListener('focusout', function () {
+      // odak iki input'un da dışına çıktıysa kaydet
+      setTimeout(function () {
+        if (!done && timeEl.isConnected && !timeEl.contains(document.activeElement)) commit();
+      }, 0);
+    });
+    ins[0].focus(); ins[0].select();
+  }
+
+  function insertSegment(at, t0, t1) {
+    S.segments.splice(at, 0, { t0: t0, t1: t1, text: '', words: null });
+    renderTranscript();
+    var el = $('transcript').querySelector('.seg[data-i="' + at + '"]');
+    if (el) {
+      S.programmaticScrollUntil = Date.now() + 700;
+      el.scrollIntoView({ block: 'center' });
+    }
+    openTextEditor(at); // boş bırakılırsa blur satırı geri siler
+  }
+  function addLineAfter(i) {
+    var cur = S.segments[i];
+    if (!cur) return;
+    var next = S.segments[i + 1];
+    var t0 = cur.t1 + 0.05;
+    var t1 = next ? Math.min(t0 + 2, Math.max(t0 + 0.5, next.t0 - 0.05)) : t0 + 2;
+    insertSegment(i + 1, t0, t1);
+  }
+  function addLineAtPlayhead() {
+    if (S.liveMode) return;
+    var t0 = Math.max(0, S.lastPlayheadSec || 0);
+    var at = 0;
+    while (at < S.segments.length && S.segments[at].t0 <= t0) at++;
+    var next = S.segments[at];
+    var t1 = next ? Math.min(t0 + 2, Math.max(t0 + 0.5, next.t0 - 0.05)) : t0 + 2;
+    insertSegment(at, t0, t1);
   }
 
   /* ================= arama ================= */
@@ -627,6 +766,7 @@
       bold: $('st-bold').checked,
       italic: $('st-italic').checked,
       uppercase: $('st-upper').checked,
+      outlineEnabled: $('st-outline-on').checked,
       outlineColor: $('st-outline-color').value,
       outlineWidth: parseFloat($('st-outline-w').value),
       backgroundEnabled: $('st-bg-on').checked,
@@ -647,6 +787,7 @@
       minDurMs: (parseFloat($('cap-mindur').value) || 1) * 1000,
       gapSplitMs: (parseFloat($('cap-gap').value) || 1) * 1000,
       splitOnPunct: $('cap-punct').checked,
+      splitOnSegment: $('cap-splitseg').checked,
       maxCps: parseInt($('cap-maxcps').value, 10) || 21,
       uppercase: $('st-upper').checked
     };
@@ -730,7 +871,7 @@
     cap.style.color = st.textColor;
     cap.style.textTransform = st.uppercase ? 'uppercase' : 'none';
     var o = Math.max(0.5, st.outlineWidth * scale);
-    cap.style.textShadow = st.outlineWidth > 0 ?
+    cap.style.textShadow = (st.outlineEnabled && st.outlineWidth > 0) ?
       ('-' + o + 'px 0 ' + st.outlineColor + ', ' + o + 'px 0 ' + st.outlineColor +
        ', 0 -' + o + 'px ' + st.outlineColor + ', 0 ' + o + 'px ' + st.outlineColor) : 'none';
     if (st.backgroundEnabled) {
@@ -781,6 +922,11 @@
 
   function addOverlay() {
     if (!S.env || !S.env.seq) { status('Sequence bilgisi yok.', 'error'); return; }
+    if (!S.settings.ffmpegPath && !W.detectFfmpeg()) {
+      status('Stilli overlay için ffmpeg gerekli — Ayarlar sekmesindeki İndir düğmesiyle tek tıkla kur.', 'error');
+      switchTab('settings-page');
+      return;
+    }
     var seq = S.env.seq;
     var st = readStyle();
     var blocks = buildBlocks(overlayCapOverrides(seq, st));
@@ -983,12 +1129,34 @@
     $('btn-detect-whisper').addEventListener('click', function () {
       var p = W.detectWhisper();
       if (p) { $('set-whisper-path').value = p; S.settings.whisperPath = p; saveSettings(); status('Bulundu: ' + p, 'ok'); }
-      else status('whisper-cli bulunamadı. Terminalde: brew install whisper-cpp', 'error');
+      else status('whisper-cli bulunamadı — eklentiyle gömülü gelir; paketi yeniden kurmayı dene.', 'error');
     });
     $('btn-detect-ffmpeg').addEventListener('click', function () {
       var p = W.detectFfmpeg();
       if (p) { $('set-ffmpeg-path').value = p; S.settings.ffmpegPath = p; saveSettings(); status('Bulundu: ' + p, 'ok'); }
-      else status('ffmpeg bulunamadı. Terminalde: brew install ffmpeg', 'error');
+      else status('ffmpeg bulunamadı — yandaki İndir düğmesi statik derlemeyi kurar (brew gerekmez).', 'error');
+    });
+    $('btn-install-ffmpeg').addEventListener('click', function () {
+      var btn = this;
+      if (S.ffmpegDl) { // ikinci tıklama: iptal
+        S.ffmpegDl.cancel(); S.ffmpegDl = null;
+        btn.textContent = 'İndir'; progress(null);
+        status('ffmpeg indirmesi iptal edildi.', '');
+        return;
+      }
+      btn.textContent = 'İptal';
+      status('ffmpeg indiriliyor… (statik derleme — brew/Xcode gerekmez)');
+      progress(0);
+      S.ffmpegDl = W.downloadFfmpeg({
+        onProgress: progress,
+        onDone: function (p) {
+          S.ffmpegDl = null; btn.textContent = 'İndir'; progress(null);
+          $('set-ffmpeg-path').value = p; S.settings.ffmpegPath = p; saveSettings();
+          status('ffmpeg kuruldu ✓ ' + p, 'ok');
+        },
+        onError: function (msg) { S.ffmpegDl = null; btn.textContent = 'İndir'; progress(null); status(msg, 'error'); },
+        onCancel: function () { S.ffmpegDl = null; btn.textContent = 'İndir'; progress(null); }
+      });
     });
     $('btn-clear-cache').addEventListener('click', function () {
       var n = W.cleanCache();
@@ -1096,6 +1264,7 @@
       $('st-bold').checked = st.bold !== false;
       $('st-italic').checked = !!st.italic;
       $('st-upper').checked = !!st.uppercase;
+      $('st-outline-on').checked = st.outlineEnabled !== false;
       $('st-outline-color').value = st.outlineColor || '#000000';
       $('st-outline-w').value = (st.outlineWidth != null) ? st.outlineWidth : 2;
       $('st-bg-on').checked = st.backgroundEnabled !== false;
@@ -1115,6 +1284,7 @@
       $('cap-mindur').value = (cp2.minDurMs || 1000) / 1000;
       $('cap-gap').value = (cp2.gapSplitMs || 1000) / 1000;
       $('cap-punct').checked = cp2.splitOnPunct !== false;
+      $('cap-splitseg').checked = cp2.splitOnSegment !== false;
       $('cap-maxcps').value = cp2.maxCps || 21;
     }
     $('lang-select').value = S.settings.language || 'tr';
@@ -1161,6 +1331,7 @@
       if (S.overlayProc) S.overlayProc.cancel();
     });
     $('btn-refresh').addEventListener('click', function () { refreshEnv(); });
+    $('btn-add-line').addEventListener('click', addLineAtPlayhead);
     $('btn-add-markers').addEventListener('click', addMarkers);
     $('btn-make-captions').addEventListener('click', addCaptionTrack);
     $('btn-make-overlay').addEventListener('click', addOverlay);
@@ -1187,9 +1358,9 @@
     $('opt-wordhl').addEventListener('change', renderTranscript);
 
     // stil inputları → önizleme + kalıcılık
-    ['st-font', 'st-size', 'st-color', 'st-bold', 'st-italic', 'st-upper', 'st-outline-color',
-     'st-outline-w', 'st-bg-on', 'st-bg-color', 'st-bg-alpha', 'st-pos', 'st-margin',
-     'st-karaoke', 'st-karaoke-color'].forEach(function (id) {
+    ['st-font', 'st-size', 'st-color', 'st-bold', 'st-italic', 'st-upper', 'st-outline-on',
+     'st-outline-color', 'st-outline-w', 'st-bg-on', 'st-bg-color', 'st-bg-alpha', 'st-pos',
+     'st-margin', 'st-karaoke', 'st-karaoke-color'].forEach(function (id) {
       $(id).addEventListener('input', function () {
         updatePreview();
         if (id === 'st-size') $('st-size-val').textContent = $('st-size').value;
@@ -1198,7 +1369,7 @@
     });
     $('cap-offset').addEventListener('input', function () { updateCaptionStats(); updatePreview(); });
     ['cap-mode', 'cap-maxchars', 'cap-maxlines', 'cap-maxdur', 'cap-mindur', 'cap-gap',
-     'cap-punct', 'cap-maxcps'].forEach(function (id) {
+     'cap-punct', 'cap-splitseg', 'cap-maxcps'].forEach(function (id) {
       $(id).addEventListener('input', function () { updateCaptionStats(); saveSettings(); });
     });
 
@@ -1210,6 +1381,7 @@
     window.addEventListener('beforeunload', function () {
       if (S.proc) S.proc.cancel();
       if (S.overlayProc) S.overlayProc.cancel();
+      if (S.ffmpegDl) S.ffmpegDl.cancel();
       Object.keys(S.downloads).forEach(function (k) { S.downloads[k].cancel(); });
     });
 
@@ -1217,7 +1389,12 @@
     refreshEnv();
     startPolling();
     updatePreview();
-    status('hazır');
+    // bağımlılık kontrolü: ffmpeg yalnız stilli overlay için gerekir
+    if (!S.settings.ffmpegPath && !W.detectFfmpeg()) {
+      status('hazır — ffmpeg eksik (stilli overlay için): Ayarlar sekmesinden tek tıkla İndir', '');
+    } else {
+      status('hazır');
+    }
   }
 
   // localhost:8090 debug konsolu için küçük kanca (üretimde zararsız)

@@ -167,6 +167,28 @@ label.field > span { min-width: 0; }
 .seg-text .w.spoken { color: var(--accent); }
 .seg-cps { flex: none; font-size: 9px; color: var(--warn); padding-top: 3px; }
 
+/* satır ekleme (+) — yalnız satırın üzerine gelince görünür */
+.seg-add {
+  flex: none; align-self: center;
+  visibility: hidden;
+  width: 18px; height: 18px; padding: 0; line-height: 1;
+  background: var(--bg-hover); color: var(--text-dim);
+  border: 1px solid var(--border); border-radius: 4px;
+  font-family: var(--font); font-size: 12px; cursor: pointer;
+}
+.seg:hover .seg-add { visibility: visible; }
+.seg-add:hover { color: var(--text); background: #3d3d3d; }
+
+/* satır içi zaman düzenleme */
+.seg-time.tc-edit { width: auto; display: flex; gap: 3px; padding-top: 0; }
+.tc-in {
+  width: 58px;
+  background: var(--bg-input); color: var(--text);
+  border: 1px solid var(--accent); border-radius: 3px;
+  font-family: var(--font); font-size: 10px; padding: 2px 3px;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ---------- altyazı & stil ---------- */
 #caption-page { overflow-y: auto; }
 #style-preview {

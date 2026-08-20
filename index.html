@@ -73,6 +73,8 @@
         <input type="checkbox" id="opt-scrollseek"> Scroll → videoyu sardır</label>
       <label class="field" title="Konuşulan kelimeyi renklendir">
         <input type="checkbox" id="opt-wordhl" checked> Kelime vurgusu</label>
+      <span style="flex:1"></span>
+      <button class="btn small" id="btn-add-line" title="Playhead konumuna yeni altyazı satırı ekler">+ Satır</button>
     </div>
 
     <div id="transcript">
@@ -80,7 +82,9 @@
         Henüz transkript yok.<br>
         Yukarıdan modelini seç, <b>Transkribe Et</b>'e bas.<br><br>
         <span class="hint">İpucu: satıra tıkla → video o ana gider. Çift tıkla → metni düzenle.<br>
-        Segmentleri birleştirmek için düzenlerken satır sonunda Delete'e bas.</span>
+        Zamana çift tıkla → başlangıç/bitişi elle gir (yalnız o satır kayar).<br>
+        <b>+ Satır</b> → playhead'e yeni satır; satırın üzerine gel → <b>+</b> altına ekler.<br>
+        Metni tamamen silip onaylarsan satır silinir.</span>
       </div>
     </div>
 
@@ -124,8 +128,9 @@
       <label class="field"><span>Kalın</span><input type="checkbox" id="st-bold" checked></label>
       <label class="field"><span>İtalik</span><input type="checkbox" id="st-italic"></label>
       <label class="field"><span>BÜYÜK HARF</span><input type="checkbox" id="st-upper"></label>
+      <label class="field"><span>Kontur</span><input type="checkbox" id="st-outline-on" checked></label>
       <label class="field"><span>Kontur rengi</span><input type="color" id="st-outline-color" value="#000000"></label>
-      <label class="field"><span>Kontur</span>
+      <label class="field"><span>Kontur kalınlığı</span>
         <input type="range" id="st-outline-w" min="0" max="6" step="0.5" value="2"></label>
       <label class="field"><span>Arkaplan</span><input type="checkbox" id="st-bg-on" checked></label>
       <label class="field"><span>Arkaplan rengi</span><input type="color" id="st-bg-color" value="#000000"></label>
@@ -162,6 +167,7 @@
       <label class="field"><span>Boşlukta böl (sn)</span>
         <input type="number" id="cap-gap" min="0.2" max="3" step="0.1" value="1"></label>
       <label class="field"><span>Cümle sonunda böl</span><input type="checkbox" id="cap-punct" checked></label>
+      <label class="field" title="Altyazı bloğu transkriptteki bir satırın sınırını aşmaz — iki konuşmacının lafı aynı altyazıya girmez. Satırları birleştirmek/ayırmak için transkripti düzenle."><span>Satır sınırında böl</span><input type="checkbox" id="cap-splitseg" checked></label>
       <label class="field"><span>CPS uyarı eşiği</span>
         <input type="number" id="cap-maxcps" min="10" max="40" value="21"></label>
       <label class="field" title="Tüm altyazıları bu kadar saniye kaydırır (eksi = erkene). Caption Track, overlay ve dışa aktarımların hepsine uygulanır. Kaydedilmez."><span>Zaman kaydırma (sn)</span>
@@ -193,7 +199,8 @@
       <button class="btn small" id="btn-detect-whisper">Bul</button></div>
     <div class="row"><label class="field" style="flex:1"><span>ffmpeg</span>
       <input type="text" id="set-ffmpeg-path"></label>
-      <button class="btn small" id="btn-detect-ffmpeg">Bul</button></div>
+      <button class="btn small" id="btn-detect-ffmpeg">Bul</button>
+      <button class="btn small primary" id="btn-install-ffmpeg" title="Statik ffmpeg derlemesini indirip kurar — brew/Xcode gerekmez">İndir</button></div>
 
     <div class="section-title">Performans</div>
     <div class="row">

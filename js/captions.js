@@ -29,6 +29,7 @@
     gapSplitMs: 1000,   // kelimeler arası boşluk bunu aşarsa yeni blok
     maxCps: 21,         // uyarı eşiği (karakter/sn)
     splitOnPunct: true,
+    splitOnSegment: true, // blok, transkript satırının sınırını aşmaz (konuşmacı karışmasın)
     uppercase: false
   };
 
@@ -67,11 +68,12 @@
 
   function flattenToWords(segments) {
     var all = [];
-    (segments || []).forEach(function (seg) {
+    (segments || []).forEach(function (seg, si) {
       var ws = (seg.words && seg.words.length) ? seg.words : estimateWords(seg);
       ws.forEach(function (w) {
         var t = String(w.text || '').trim();
-        if (t) all.push({ t0: w.t0, t1: w.t1, text: t });
+        // segIdx: kelimenin geldiği transkript satırı — splitOnSegment bununla böler
+        if (t) all.push({ t0: w.t0, t1: w.t1, text: t, segIdx: si });
       });
     });
     all.sort(function (a, b) { return a.t0 - b.t0; });
@@ -202,13 +204,16 @@
 
     words.forEach(function (w) {
       if (cur) {
-        var gap = w.t0 - cur.words[cur.words.length - 1].t1;
+        var last = cur.words[cur.words.length - 1];
+        var gap = w.t0 - last.t1;
         var candChars = charCount(cur.words.concat([w]));
         var candDur = w.t1 - cur.words[0].t0;
-        var lastText = cur.words[cur.words.length - 1].text;
-        var punctBreak = o.splitOnPunct && STRONG_PUNCT.test(lastText) &&
+        var punctBreak = o.splitOnPunct && STRONG_PUNCT.test(last.text) &&
           charCount(cur.words) >= Math.min(12, o.maxCharsPerLine * 0.3);
-        if (candChars > maxBlockChars || candDur > o.maxDurMs || gap > o.gapSplitMs || punctBreak) flush();
+        // transkript satırı değişti → yeni blok (farklı konuşmacıların lafı karışmasın)
+        var segBreak = o.splitOnSegment && w.segIdx !== undefined &&
+          last.segIdx !== undefined && w.segIdx !== last.segIdx;
+        if (candChars > maxBlockChars || candDur > o.maxDurMs || gap > o.gapSplitMs || punctBreak || segBreak) flush();
       }
       if (!cur) cur = { words: [] };
       cur.words.push(w);
@@ -288,6 +293,7 @@
     textColor: '#FFFFFF',
     bold: true,
     italic: false,
+    outlineEnabled: true,
     outlineColor: '#000000',
     outlineWidth: 2,           // px (PlayResY=720 tabanında)
     shadow: 0,
@@ -330,15 +336,34 @@
     var marginV = Math.round(H * st.marginVPct / 100);
     var marginH = Math.round(W * 0.05); // yatay kenar %5 — sarma sınırı
     var scale = H / 720;
-    var outline = Math.round(st.outlineWidth * scale * 10) / 10;
-    // BorderStyle 4: libass'a özgü satır başına arkaplan kutusu (BackColour kullanılır,
-    // Outline değeri kutu dolgusu olur). Kutu yoksa 1: klasik dış çizgi + gölge.
-    var borderStyle = st.backgroundEnabled ? 4 : 1;
-    var boxPad = st.backgroundEnabled ? Math.max(outline, Math.round(fontSize * 0.22)) : outline;
+    var outlineOn = st.outlineEnabled !== false && st.outlineWidth > 0;
+    var outline = outlineOn ? Math.round(st.outlineWidth * scale * 10) / 10 : 0;
+    var boxPad = Math.max(outline, Math.round(fontSize * 0.22));
 
     // Karaoke: PrimaryColour = söylenmiş (vurgu), SecondaryColour = henüz söylenmemiş (taban)
     var primary = st.karaoke ? assColor(st.karaokeColor, 1) : assColor(st.textColor, 1);
     var secondary = assColor(st.textColor, 1);
+    var transparent = assColor('#000000', 0);
+
+    function styleLine(name, borderStyle, outlineW, primaryC, secondaryC, outlineC, backC) {
+      return ['Style: ' + name, st.fontFamily, fontSize, primaryC, secondaryC, outlineC, backC,
+        st.bold ? -1 : 0, st.italic ? -1 : 0, 0, 0, 100, 100, 0, 0,
+        borderStyle, outlineW, st.shadow, align, marginH, marginH, marginV, 1].join(',');
+    }
+
+    // Metin katmanı her zaman BorderStyle 1: kontur genişliği kullanıcının değeri,
+    // kapalıysa gerçekten 0. Arkaplan kutusu ayrı bir alt katmandır (BorderStyle 4,
+    // libass'a özgü satır başına kutu; Outline değeri kutu dolgusu olur). BorderStyle 4
+    // glifleri de OutlineColour ile konturladığından kutu katmanının yazısı ve konturu
+    // tam şeffaftır — görünen metin ve kontur yalnız üst katmandan gelir. Böylece
+    // kontur kutu dolgusundan bağımsızdır; kutu + kontur birlikte de çalışır.
+    var styles = [];
+    if (st.backgroundEnabled) {
+      styles.push(styleLine('FisiltiBox', 4, boxPad, transparent, transparent,
+        transparent, assColor(st.backgroundColor, st.backgroundAlpha)));
+    }
+    styles.push(styleLine('Fisilti', 1, outline, primary, secondary,
+      assColor(st.outlineColor, 1), assColor(st.backgroundColor, st.backgroundAlpha)));
 
     var head = [
       '[Script Info]',
@@ -353,17 +378,18 @@
       '[V4+ Styles]',
       'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, ' +
       'Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, ' +
-      'Alignment, MarginL, MarginR, MarginV, Encoding',
-      ['Style: Fisilti', st.fontFamily, fontSize, primary, secondary,
-        assColor(st.outlineColor, 1), assColor(st.backgroundColor, st.backgroundAlpha),
-        st.bold ? -1 : 0, st.italic ? -1 : 0, 0, 0, 100, 100, 0, 0,
-        borderStyle, boxPad, st.shadow, align, marginH, marginH, marginV, 1].join(','),
+      'Alignment, MarginL, MarginR, MarginV, Encoding'
+    ].concat(styles).concat([
       '',
       '[Events]',
       'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text'
-    ];
+    ]);
 
-    var events = blocks.map(function (b) {
+    var events = [];
+    blocks.forEach(function (b) {
+      var plain = b.lines.map(function (l) {
+        return escAss(st.uppercase ? l.toLocaleUpperCase('tr') : l);
+      }).join('\\N');
       var text;
       if (st.karaoke && b.words && b.words.length) {
         // \k süreleri santisaniyedir; kelime aralarındaki boşluk süreye dahil edilir
@@ -384,11 +410,14 @@
         });
         text = rebuilt.join('\\N');
       } else {
-        text = b.lines.map(function (l) {
-          return escAss(st.uppercase ? l.toLocaleUpperCase('tr') : l);
-        }).join('\\N');
+        text = plain;
       }
-      return 'Dialogue: 0,' + msToAss(b.t0) + ',' + msToAss(b.t1) + ',Fisilti,,0,0,0,,' + text;
+      // Kutu katmanı görünen metinle aynı satır kırılımını taşımalı (kutu boyutu
+      // metinden hesaplanır) ama \k etiketsiz — kutu, karaoke ile parça parça çıkmasın
+      if (st.backgroundEnabled) {
+        events.push('Dialogue: 0,' + msToAss(b.t0) + ',' + msToAss(b.t1) + ',FisiltiBox,,0,0,0,,' + plain);
+      }
+      events.push('Dialogue: 1,' + msToAss(b.t0) + ',' + msToAss(b.t1) + ',Fisilti,,0,0,0,,' + text);
     });
 
     return head.concat(events).join('\n') + '\n';

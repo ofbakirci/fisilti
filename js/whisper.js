@@ -35,6 +35,8 @@ window.FisiltiWhisper = (function () {
   // Sequence'e eklenen overlay'ler proje medyasıdır — cache'te DEĞİL burada durur,
   // yoksa "geçici dosyaları temizle" media offline yapar.
   var OVERLAYS_DIR = path.join(APP_DIR, 'overlays');
+  // Panelin kendi indirdiği ikililer (ör. ffmpeg) — brew gerekmez
+  var BIN_DIR = path.join(APP_DIR, 'bin');
   // Kullanıcının hâlihazırdaki model klasörleri de taranır
   var EXTRA_MODEL_DIRS = [path.join(HOME, 'whisper-models')];
 
@@ -43,7 +45,7 @@ window.FisiltiWhisper = (function () {
   var SPAWN_ENV = Object.assign({}, process.env, { PATH: WIDE_PATH });
 
   function ensureDirs() {
-    [APP_DIR, MODELS_DIR, CACHE_DIR, LOG_DIR, TRANSCRIPTS_DIR, OVERLAYS_DIR].forEach(function (d) {
+    [APP_DIR, MODELS_DIR, CACHE_DIR, LOG_DIR, TRANSCRIPTS_DIR, OVERLAYS_DIR, BIN_DIR].forEach(function (d) {
       try { fs.mkdirSync(d, { recursive: true }); } catch (e) {}
     });
   }
@@ -174,7 +176,64 @@ window.FisiltiWhisper = (function () {
   function detectFfmpeg() {
     var cands = ['/opt/homebrew/bin/ffmpeg', '/usr/local/bin/ffmpeg'];
     for (var i = 0; i < cands.length; i++) if (fs.existsSync(cands[i])) return cands[i];
+    // panelin kendi indirdiği kopya
+    var own = path.join(BIN_DIR, 'ffmpeg');
+    if (fs.existsSync(own)) { makeRunnable(own); return own; }
     return which('ffmpeg');
+  }
+
+  /* ---------------- ffmpeg indirme (brew/Xcode gerekmez) ----------------
+   * ffmpeg.org'un macOS sayfasının işaret ettiği statik derlemeler
+   * (ffmpeg.martin-riedl.de). Tek dosyalık zip iner, ~/Library/Application
+   * Support/Fisilti/bin altına açılır, karantina kaldırılır, çalıştığı doğrulanır.
+   */
+  function machineArch() {
+    // Rosetta altında bile gerçek donanımı verir (process.arch yanılabilir)
+    try {
+      var out = cp.execSync('/usr/sbin/sysctl -n hw.optional.arm64', { encoding: 'utf8' }).trim();
+      if (out === '1') return 'arm64';
+    } catch (e) {}
+    return process.arch === 'arm64' ? 'arm64' : 'amd64';
+  }
+  function downloadFfmpeg(cbs) {
+    ensureDirs();
+    cbs = cbs || {};
+    var url = 'https://ffmpeg.martin-riedl.de/redirect/latest/macos/' + machineArch() + '/release/ffmpeg.zip';
+    var tmp = path.join(CACHE_DIR, 'ffmpeg_dl.zip');
+    var dest = path.join(BIN_DIR, 'ffmpeg');
+    var proc = cp.spawn('/usr/bin/curl', ['-L', '-f', '--progress-bar', '-o', tmp, url], { env: SPAWN_ENV });
+
+    var lastPct = -1;
+    proc.stderr.on('data', function (chunk) {
+      var matches = chunk.toString().match(/(\d+(?:[.,]\d+)?)%/g);
+      if (matches && matches.length) {
+        var pct = parseFloat(matches[matches.length - 1]);
+        if (pct !== lastPct) { lastPct = pct; if (cbs.onProgress) cbs.onProgress(pct); }
+      }
+    });
+    proc.on('error', function (e) { if (cbs.onError) cbs.onError('curl çalıştırılamadı: ' + e.message); });
+    proc.on('close', function (code) {
+      if (code !== 0) {
+        try { fs.unlinkSync(tmp); } catch (e0) {}
+        if (code === null) { if (cbs.onCancel) cbs.onCancel(); }
+        else if (cbs.onError) cbs.onError('ffmpeg indirilemedi (curl kod ' + code + ') — ağ bağlantısını kontrol et.');
+        return;
+      }
+      var un = cp.spawnSync('/usr/bin/unzip', ['-o', tmp, '-d', BIN_DIR], { env: SPAWN_ENV });
+      try { fs.unlinkSync(tmp); } catch (e1) {}
+      if (un.status !== 0 || !fs.existsSync(dest)) {
+        if (cbs.onError) cbs.onError('ffmpeg arşivi açılamadı (unzip kod ' + un.status + ')');
+        return;
+      }
+      makeRunnable(dest);
+      var v = cp.spawnSync(dest, ['-version'], { env: SPAWN_ENV });
+      if (v.status !== 0) {
+        if (cbs.onError) cbs.onError('İndirilen ffmpeg çalıştırılamadı — Ayarlar > Log klasörüne bak.');
+        return;
+      }
+      if (cbs.onDone) cbs.onDone(dest);
+    });
+    return { cancel: function () { try { proc.kill('SIGKILL'); } catch (e) {} } };
   }
 
   /* ---------------- transkripsiyon ----------------
@@ -201,7 +260,7 @@ window.FisiltiWhisper = (function () {
     if (opts.vad && opts.vadModelPath) args.push('--vad', '--vad-model', opts.vadModelPath);
 
     var bin = opts.whisperPath || detectWhisper();
-    if (!bin) { if (cbs.onError) cbs.onError('whisper-cli bulunamadı. Ayarlar sekmesinden yolunu gir (brew install whisper-cpp).'); return null; }
+    if (!bin) { if (cbs.onError) cbs.onError('whisper-cli bulunamadı — eklentiyle gömülü gelir; paketi yeniden kur ya da Ayarlar sekmesinden yolunu gir.'); return null; }
     if (!opts.modelPath || !fs.existsSync(opts.modelPath)) {
       if (cbs.onError) cbs.onError('Model dosyası yok. Modeller sekmesinden indir.'); return null;
     }
@@ -304,7 +363,7 @@ window.FisiltiWhisper = (function () {
     ensureDirs();
     cbs = cbs || {};
     var bin = opts.ffmpegPath || detectFfmpeg();
-    if (!bin) { if (cbs.onError) cbs.onError('ffmpeg bulunamadı (brew install ffmpeg).'); return null; }
+    if (!bin) { if (cbs.onError) cbs.onError('ffmpeg bulunamadı — Ayarlar sekmesindeki İndir düğmesiyle tek tıkla kur.'); return null; }
 
     // ass filtresi için yol kaçışı: \ → \\, : → \: (yol bizim ürettiğimiz
     // Caches/Fisilti altındadır, tek tırnak içermez — kabuk kaçışı gerekmez)
@@ -399,7 +458,7 @@ window.FisiltiWhisper = (function () {
     CATALOG: CATALOG, VAD_MODEL: VAD_MODEL,
     listModels: listModels, findModelFile: findModelFile, findVadModel: findVadModel,
     downloadModel: downloadModel, deleteModel: deleteModel,
-    detectWhisper: detectWhisper, detectFfmpeg: detectFfmpeg,
+    detectWhisper: detectWhisper, detectFfmpeg: detectFfmpeg, downloadFfmpeg: downloadFfmpeg,
     transcribe: transcribe, renderOverlay: renderOverlay, wavRms: wavRms,
     writeFile: writeFile, readJsonSafe: readJsonSafe, writeJson: writeJson,
     cleanCache: cleanCache, openInFinder: openInFinder, versions: versions

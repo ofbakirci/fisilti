@@ -31,10 +31,12 @@ if command -v whisper-cli >/dev/null 2>&1 || [ -x /opt/homebrew/bin/whisper-cli 
 else
   echo "  UYARI: whisper-cli yok → brew install whisper-cpp"
 fi
-if command -v ffmpeg >/dev/null 2>&1 || [ -x /opt/homebrew/bin/ffmpeg ]; then
+if command -v ffmpeg >/dev/null 2>&1 || [ -x /opt/homebrew/bin/ffmpeg ] \
+   || [ -x "$HOME/Library/Application Support/Fisilti/bin/ffmpeg" ]; then
   echo "  ffmpeg: var"
 else
-  echo "  UYARI: ffmpeg yok (stilli overlay için gerekli) → brew install ffmpeg"
+  echo "  NOT: ffmpeg yok (yalnız stilli overlay için gerekli)"
+  echo "       Panelden kur: Ayarlar > ffmpeg > İndir (brew gerekmez)"
 fi
 
 echo ""

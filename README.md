@@ -23,6 +23,8 @@ Dakika ücreti yok, abonelik yok, buluta giden ses yok.
 - Playhead ilerledikçe transkript takip eder, konuşulan kelime vurgulanır
 - **Scroll → videoyu sardır**: transkripti kaydırdıkça video uygun ana gider
 - Çift tıkla düzenle (kelime zamanları otomatik yeniden dağıtılır — kayma olmaz)
+- **Satır ekle**: `+ Satır` playhead'e yeni altyazı satırı açar; satırın üzerine gelince çıkan `+` altına ekler. Metni boşaltıp onaylayınca satır silinir
+- **Zamana çift tıkla**: başlangıç/bitişi elle gir — yalnız o satır kayar, kalan her şey yerinde durur
 - Arama + önceki/sonraki; **bul-değiştir** (tek eşleşme veya tümü, geri al) — yanlış duyulan özel isimleri tek hamlede düzelt
 - Segmentleri sequence marker'ına dökme
 - **Sözlük** (Ayarlar): özel isim ve terimleri virgülle yaz, Whisper'a `--prompt` olarak gider; yanlış duyma baştan azalır
@@ -34,6 +36,9 @@ Dakika ücreti yok, abonelik yok, buluta giden ses yok.
 - Cümle blokları **veya** kelime kelime (viral/sosyal medya) modu
 - Netflix TR kurallarına uygun bölümleme: 42 karakter/satır, bağlaçla satır bitirmeme,
   cümle sonunda kırma, asgari süre, CPS (okuma hızı) uyarıları, Türkçe büyük harf (İ/ı)
+- **Satır sınırında böl** (varsayılan açık): altyazı bloğu transkriptteki bir satırın
+  sınırını aşmaz — iki konuşmacının lafı aynı altyazıya girmez; kimin lafının nerede
+  bittiğini transkript satırlarını düzenleyerek sen belirlersin
 - **Caption Track ekle**: Premiere'in doğal altyazı track'i (SRT üzerinden, UTF-8 BOM)
 - **Stilli overlay**: seçtiğin stil birebir — renk, arkaplan, kontur, font, boyut,
   konum, karaoke kelime vurgusu — alfa kanallı ProRes 4444 video olarak render edilip
@@ -52,15 +57,17 @@ Dakika ücreti yok, abonelik yok, buluta giden ses yok.
 4. Panelin **Modeller** sekmesinden bir model indir (Türkçe için `large-v3-turbo` önerilir). Bitti.
 
 Whisper motoru eklentinin içinde gömülü gelir — Terminal, Homebrew, hiçbir şey gerekmez.
-Yalnızca "Stilli overlay" özelliği ffmpeg ister; yoksa panel nereden kurulacağını söyler
-(`brew install ffmpeg`), diğer her şey ffmpeg'siz çalışır.
+Yalnızca "Stilli overlay" özelliği ffmpeg ister; o da panelden kurulur:
+**Ayarlar > ffmpeg > İndir** statik derlemeyi tek tıkla indirir (brew/Xcode gerekmez).
 
 ## Kurulum (geliştirici — kaynaktan)
 
 ```bash
 ./install.sh          # symlink + PlayerDebugMode
-brew install whisper-cpp ffmpeg
 ```
+
+whisper-cli repoda gömülü (`bin/whisper-cli`); ffmpeg'i panelin Ayarlar sekmesinden
+indirebilir ya da `brew install ffmpeg` ile kurabilirsin.
 
 `~/whisper-models/` klasöründeki mevcut modeller otomatik tanınır.
 

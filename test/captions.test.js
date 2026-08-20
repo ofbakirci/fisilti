@@ -152,6 +152,24 @@ t('assColor hex harfli alpha değerlerinde NaN üretmez (regresyon)', () => {
     assert.ok(/^&H[0-9A-F]{8}$/.test(c), 'bozuk renk: ' + c + ' (alpha=' + a / 20 + ')');
   }
 });
+t('buildCaptions transkript satırı sınırını aşmaz (konuşmacı karışması regresyonu)', () => {
+  // xx: "ya..." / yy: "Oğluşum" — kısa kuyruk noktalama eşiğinin (12 karakter)
+  // altında kaldığından eski davranış iki konuşmacıyı aynı bloğa koyuyordu
+  const segs = [
+    { t0: 0, t1: 2000, text: 'ya...' },
+    { t0: 2200, t1: 3000, text: 'Oğluşum' }
+  ];
+  const blocks = C.buildCaptions(segs, { gapSplitMs: 3000 });
+  assert.ok(blocks.length >= 2, 'satır sınırında bölünmedi: ' + JSON.stringify(blocks.map(b => b.lines)));
+  blocks.forEach(b => {
+    const joined = b.lines.join(' ');
+    assert.ok(!(joined.includes('ya...') && joined.includes('Oğluşum')),
+      'iki konuşmacı aynı blokta: ' + joined);
+  });
+  // ayar kapatılırsa eski davranış: birleşebilir
+  const merged = C.buildCaptions(segs, { gapSplitMs: 3000, splitOnSegment: false });
+  assert.ok(merged.length < blocks.length, 'splitOnSegment:false birleştirmeliydi');
+});
 t('buildCaptions sıkışık bloklarda örtüşme üretmez (regresyon)', () => {
   const segs = [{ t0: 0, t1: 600, text: '', words: [
     { t0: 0, t1: 100, text: 'çok' }, { t0: 150, t1: 250, text: 'hızlı.' },
@@ -180,6 +198,42 @@ t('toASS karaoke modunda \\k etiketleri üretir', () => {
 t('toASS süslü parantezleri etkisizleştirir', () => {
   const ass = C.toASS([{ t0: 0, t1: 1000, lines: ['tehlike {\\b1} burada'], words: [] }], {}, 1280, 720);
   assert.ok(!/\{\\b1\}/.test(ass));
+});
+t('toASS kutu açıkken kutuyu ayrı katmanda çizer (kontur kutudan bağımsız)', () => {
+  const ass = C.toASS(sampleBlocks, { backgroundEnabled: true, outlineWidth: 3 }, 1280, 720);
+  const box = ass.split('\n').find(l => l.startsWith('Style: FisiltiBox'));
+  const txt = ass.split('\n').find(l => l.startsWith('Style: Fisilti,'));
+  assert.ok(box, 'FisiltiBox stili yok');
+  // kutu katmanı: BorderStyle 4, yazı+kontur tam şeffaf (glif konturu kutuyu lekelemesin)
+  assert.ok(/,4,\d+(\.\d+)?,0,/.test(box), 'kutu BorderStyle 4 değil: ' + box);
+  assert.strictEqual(box.split(',')[3], '&HFF000000', 'kutu yazısı şeffaf olmalı');
+  assert.strictEqual(box.split(',')[5], '&HFF000000', 'kutu konturu şeffaf olmalı');
+  // metin katmanı: BorderStyle 1, kullanıcının kontur genişliği (3 × 720/720 = 3)
+  assert.ok(/,1,3,0,/.test(txt), 'metin katmanı BorderStyle 1 + kontur 3 değil: ' + txt);
+  // her blok için iki Dialogue: önce kutu (layer 0), sonra metin (layer 1)
+  const dial = ass.split('\n').filter(l => l.startsWith('Dialogue:'));
+  assert.strictEqual(dial.length, sampleBlocks.length * 2);
+  assert.ok(dial[0].startsWith('Dialogue: 0,') && dial[0].includes('FisiltiBox'));
+  assert.ok(dial[1].startsWith('Dialogue: 1,') && dial[1].includes(',Fisilti,'));
+});
+t('toASS kontur kapatılınca gerçekten 0 yazar (kutu açıkken de)', () => {
+  const ass = C.toASS(sampleBlocks, { backgroundEnabled: true, outlineEnabled: false, outlineWidth: 3 }, 1280, 720);
+  const txt = ass.split('\n').find(l => l.startsWith('Style: Fisilti,'));
+  assert.ok(/,1,0,0,/.test(txt), 'kontur 0 olmalı: ' + txt);
+});
+t('toASS kutu kapalıyken tek stil, tek Dialogue üretir', () => {
+  const ass = C.toASS(sampleBlocks, { backgroundEnabled: false, outlineWidth: 2 }, 1280, 720);
+  assert.ok(!ass.includes('FisiltiBox'));
+  const dial = ass.split('\n').filter(l => l.startsWith('Dialogue:'));
+  assert.strictEqual(dial.length, sampleBlocks.length);
+});
+t('toASS karaoke + kutu: kutu katmanında \\k etiketi olmaz', () => {
+  const segs = [{ t0: 0, t1: 2000, text: '', words: mkWords([[0, 500, 'bir'], [600, 1100, 'iki'], [1200, 2000, 'üç']]) }];
+  const blocks = C.buildCaptions(segs);
+  const ass = C.toASS(blocks, { karaoke: true, backgroundEnabled: true }, 1280, 720);
+  const boxDial = ass.split('\n').filter(l => l.includes('FisiltiBox') && l.startsWith('Dialogue:'));
+  assert.ok(boxDial.length > 0);
+  boxDial.forEach(l => assert.ok(!/\\k\d/.test(l), 'kutu katmanında \\k var: ' + l));
 });
 
 /* ---- konuşma başlangıcına hizalama ---- */
