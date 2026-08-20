@@ -46,6 +46,18 @@ $._fst = (function () {
 
   function activeSeq() { return app.project ? app.project.activeSequence : null; }
 
+  // Proje kökünde ada göre bin bul, yoksa oluştur. Fısıltı'nın ürettiği her
+  // şey (overlay + SRT) "Fısıltı-OverlaySRT" klasöründe toplanır — kök temiz kalır.
+  function findOrCreateBin(name) {
+    var root = app.project.rootItem;
+    var BIN_TYPE = (typeof ProjectItemType !== 'undefined') ? ProjectItemType.BIN : 2;
+    for (var i = 0; i < root.children.numItems; i++) {
+      var ch = root.children[i];
+      if (ch && ch.type === BIN_TYPE && ch.name === name) return ch;
+    }
+    return root.createBin(name);
+  }
+
   /* ---------- panel bildirimleri (CSXSEvent) ---------- */
   function notify(type, payload) {
     try {
@@ -191,7 +203,10 @@ $._fst = (function () {
       var seq = activeSeq();
       if (!seq) return err('Aktif sequence yok');
 
-      var destBin = app.project.getInsertionBin();
+      // SRT öğeleri de proje kökünü kirletmesin — Fısıltı'nın ortak klasörüne
+      var destBin = null;
+      try { destBin = findOrCreateBin('Fısıltı-OverlaySRT'); } catch (eBin) {}
+      if (!destBin) destBin = app.project.getInsertionBin();
       var prevCount = destBin.children.numItems;
 
       var imported = app.project.importFiles([p.srtPath], true, destBin, false);
@@ -214,7 +229,10 @@ $._fst = (function () {
       var seq = activeSeq();
       if (!seq) return err('Aktif sequence yok');
 
-      var destBin = app.project.getInsertionBin();
+      // Overlay'ler proje kökünü doldurmasın — hepsi tek klasörde
+      var destBin = null;
+      try { destBin = findOrCreateBin('Fısıltı-OverlaySRT'); } catch (eBin) {}
+      if (!destBin) destBin = app.project.getInsertionBin();
       var prevCount = destBin.children.numItems;
       var imported = app.project.importFiles([p.path], true, destBin, false);
       if (!imported) return err('Overlay dosyası içe aktarılamadı');
