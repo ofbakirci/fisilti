@@ -1094,6 +1094,32 @@
     }
   }
 
+  function importTranscript() {
+    var paths = null;
+    try {
+      var res = window.cep.fs.showOpenDialogEx(false, false, 'Transkript aç (SRT/VTT)', '', ['srt', 'vtt']);
+      paths = res && res.data;
+    } catch (e) {}
+    if (!paths || !paths.length) return;
+    var text = W.readTextFile(paths[0]);
+    if (text === null) { status('Dosya okunamadı: ' + paths[0], 'error'); return; }
+    var msSegs = C.fromSubtitle(text);
+    if (!msSegs.length) { status('Dosyada altyazı bulunamadı (SRT/VTT bekleniyor).', 'error'); return; }
+    if (S.segments.length && !window.confirm('Paneldeki ' + S.segments.length + ' segmentin yerine ' +
+        msSegs.length + ' segment içe aktarılacak. Devam?')) return;
+    S.segments = msSegs.map(function (m) {
+      var seg = { t0: m.t0 / 1000, t1: m.t1 / 1000, text: m.text, words: null };
+      var est = C.estimateWords({ t0: m.t0, t1: m.t1, text: m.text });
+      seg.words = est.map(function (w) { return { t0: w.t0 / 1000, t1: w.t1 / 1000, text: w.text }; });
+      return seg;
+    });
+    S.liveMode = false;
+    renderTranscript();
+    persistTranscript();
+    updateCaptionStats();
+    status(S.segments.length + ' segment içe aktarıldı: ' + paths[0].split('/').pop(), 'ok');
+  }
+
   function addMarkers() {
     if (!S.segments.length) { status('Önce transkript üret.', 'error'); return; }
     var markers = S.segments.map(function (s) {
@@ -1493,6 +1519,7 @@
     $('btn-make-captions').addEventListener('click', addCaptionTrack);
     $('btn-style-to-premiere').addEventListener('click', saveStyleToPremiere);
     $('btn-make-overlay').addEventListener('click', addOverlay);
+    $('btn-import-transcript').addEventListener('click', importTranscript);
     $('btn-export-srt').addEventListener('click', function () { exportFormat('srt'); });
     $('btn-export-vtt').addEventListener('click', function () { exportFormat('vtt'); });
     $('btn-export-txt').addEventListener('click', function () { exportFormat('txt'); });

@@ -285,6 +285,33 @@ t('toASS akıllı sarma ve yatay kenar boşluğu yazar', () => {
   assert.ok(/,54,54,/.test(ass), 'MarginL/R = %5 × 1080 = 54');
 });
 
+/* ---- SRT/VTT içe aktarma ---- */
+t('fromSubtitle SRT çözer ve toSRT ile gidiş-dönüş korunur', () => {
+  const blocks = [
+    { t0: 1120, t1: 5180, lines: ['Ne oldu?', 'Canım mı sıkkın?'], words: [] },
+    { t0: 5480, t1: 6280, lines: ['Anlarız şimdi.'], words: [] }
+  ];
+  const segs = C.fromSubtitle(C.toSRT(blocks));
+  assert.strictEqual(segs.length, 2);
+  assert.deepStrictEqual([segs[0].t0, segs[0].t1], [1120, 5180]);
+  assert.strictEqual(segs[0].text, 'Ne oldu? Canım mı sıkkın?');
+  assert.strictEqual(segs[1].text, 'Anlarız şimdi.');
+});
+t('fromSubtitle VTT başlığını, NOTE bloklarını ve cue ayarlarını atlar', () => {
+  const vtt = 'WEBVTT\n\nNOTE deneme\nyorum satırı\n\n00:03.240 --> 00:06.120 position:50% line:90%\nMerhaba <b>dünya</b>\n\n1:00:00.000 --> 1:00:01.500\nSon söz\n';
+  const segs = C.fromSubtitle(vtt);
+  assert.strictEqual(segs.length, 2);
+  assert.deepStrictEqual([segs[0].t0, segs[0].t1], [3240, 6120]);
+  assert.strictEqual(segs[0].text, 'Merhaba dünya');
+  assert.strictEqual(segs[1].t0, 3600000);
+});
+t('fromSubtitle bozuk girdide boş döner, BOM yutar', () => {
+  assert.deepStrictEqual(C.fromSubtitle('rastgele metin\nzaman yok'), []);
+  const segs = C.fromSubtitle('\uFEFF1\n00:00:01,000 --> 00:00:02,000\nSelam\n');
+  assert.strictEqual(segs.length, 1);
+  assert.strictEqual(segs[0].text, 'Selam');
+});
+
 /* ---- kelime kırpılmaz ---- */
 t('breakLines satıra sığmayan kelimeyi kırpmaz, kendi satırına bırakır', () => {
   const lines = C.breakLines(['fotoğrafını', 'çek'], 7, 2);

@@ -31,6 +31,8 @@ Dakika ücreti yok, abonelik yok, buluta giden ses yok.
 - **Konuşma hizalama**: Whisper'ın erken başlattığı altyazılar ses enerjisine göre gerçek konuşma başına çekilir
 - **Zaman kaydırma**: tüm altyazıları ± saniye kaydır (Altyazı & Stil > Bölümleme)
 - Transkript sequence başına otomatik saklanır; panel kapansa da kaybolmaz
+- **İçe aktar**: hazır SRT/VTT dosyasını transkript olarak yükle, düzenle, tekrar üret
+- **Stili Premiere'e kaydet**: paneldeki stil Premiere metin stiline çevrilir (yerel stiller + proje); caption track'e Track Style menüsünden tek tıkla uygulanır
 
 **Altyazı**
 - Cümle blokları **veya** kelime kelime (viral/sosyal medya) modu

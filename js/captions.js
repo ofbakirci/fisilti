@@ -423,6 +423,44 @@
     return head.concat(events).join('\n') + '\n';
   }
 
+  /* ---------------- SRT/VTT içe aktarma ---------------- */
+
+  // SRT ya da VTT metnini segmentlere çözer: [{t0,t1,text,words:null}] (ms).
+  // Dayanıklıdır: BOM, CRLF, sıra numarası satırları, VTT başlığı/NOTE blokları,
+  // zaman satırındaki VTT cue ayarları (position:... vb.) ve çok satırlı metin.
+  var SUB_TIME_RE = /^\s*(?:(\d{1,2}):)?(\d{1,2}):(\d{2})[.,](\d{1,3})\s*-->\s*(?:(\d{1,2}):)?(\d{1,2}):(\d{2})[.,](\d{1,3})/;
+  function fromSubtitle(text) {
+    var lines = String(text || '').replace(/^\uFEFF/, '').split(/\r\n|\r|\n/);
+    var segs = [], cur = null;
+    function toMs(h, m, sec, ms) {
+      return (parseInt(h || 0, 10)) * 3600000 + parseInt(m, 10) * 60000 +
+             parseInt(sec, 10) * 1000 + parseInt(String(ms || '0').padEnd ? String(ms).padEnd(3, '0') : ms, 10);
+    }
+    function flush() {
+      if (cur && cur.textLines.length) {
+        var t = cur.textLines.join(' ').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+        if (t) segs.push({ t0: cur.t0, t1: cur.t1, text: t, words: null });
+      }
+      cur = null;
+    }
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i];
+      var m = SUB_TIME_RE.exec(line);
+      if (m) {
+        flush();
+        cur = { t0: toMs(m[1], m[2], m[3], m[4]), t1: toMs(m[5], m[6], m[7], m[8]), textLines: [] };
+        continue;
+      }
+      if (!cur) continue; // başlık, NOTE, sıra numarası, boşluk
+      if (!line.trim()) { flush(); continue; }
+      if (/^\d+$/.test(line.trim())) continue; // bir sonraki bloğun sıra numarası
+      cur.textLines.push(line.trim());
+    }
+    flush();
+    segs.sort(function (a, b) { return a.t0 - b.t0; });
+    return segs;
+  }
+
   /* ---------------- konuşma başlangıcına hizalama ---------------- */
 
   // Whisper ilk segmenti (ve sessizlik sonrası segmentleri) sıkça 0'dan ya da
@@ -519,6 +557,7 @@
     assColor: assColor,
     toSRT: toSRT,
     toVTT: toVTT,
+    fromSubtitle: fromSubtitle,
     toTXT: toTXT,
     toCSV: toCSV,
     toASS: toASS,
