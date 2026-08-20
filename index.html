@@ -18,6 +18,7 @@
     <button class="active" data-tab="transcribe-page">Transkript</button>
     <button data-tab="caption-page">Altyazı &amp; Stil</button>
     <button data-tab="models-page">Modeller</button>
+    <button data-tab="history-page">Geçmiş</button>
     <button data-tab="settings-page">Ayarlar</button>
   </div>
 
@@ -115,6 +116,20 @@
     <div id="style-preview"><div class="pv-caption">Böyle görünecek —<br>altyazı önizlemesi</div></div>
     <div class="hint" id="preview-meta" style="padding:0 10px 2px"></div>
 
+    <div class="section-title">Stil kütüphanesi</div>
+    <div id="style-lib"></div>
+    <div class="row">
+      <button class="btn small" id="btn-style-save" title="Aşağıdaki stil ayarlarını kütüphaneye adıyla kaydeder">＋ Bu stili kaydet</button>
+      <button class="btn small" id="btn-style-import" title="Fısıltı stil JSON dosyasını kütüphaneye ekler">İçe aktar</button>
+      <button class="btn small" id="btn-style-export" title="Kütüphanendeki stilleri JSON olarak dışa aktarır (paylaşılabilir)">Dışa aktar</button>
+      <span class="hint" style="flex:1">Karoya tıkla → stil uygulanır</span>
+    </div>
+    <div class="row" id="style-save-row" style="display:none">
+      <input type="text" id="style-save-name" placeholder="Stil adı…" style="flex:1">
+      <button class="btn small primary" id="btn-style-save-ok">Kaydet</button>
+      <button class="btn small" id="btn-style-save-cancel">Vazgeç</button>
+    </div>
+
     <div class="section-title" title="Premiere, Caption Track stilini API'den almaz; bu ayarlar Stilli overlay ve ASS çıktısına uygulanır. Caption Track stili: caption seçiliyken Özellikler (Properties) paneli > Track Style.">Stil — stilli overlay &amp; ASS için</div>
     <div class="grid2">
       <label class="field"><span>Font</span>
@@ -202,6 +217,16 @@
   <div class="tab-page" id="models-page">
     <div class="hint" style="padding-top:8px">Modeller <b>~/Library/Application Support/Fisilti/models</b> klasörüne iner. Türkçe için önerilen: <b>large-v3-turbo</b> (hız/kalite dengesi) veya <b>medium</b>.</div>
     <div id="model-list"></div>
+  </div>
+
+  <!-- ===================== GEÇMİŞ ===================== -->
+  <div class="tab-page" id="history-page">
+    <div class="row">
+      <button class="btn small" id="btn-undo" title="⌘Z — son düzenlemeyi geri alır">↩ Geri al</button>
+      <button class="btn small" id="btn-redo" title="⇧⌘Z — geri alınanı yeniden uygular">↪ İleri al</button>
+      <span class="hint" style="flex:1">Satıra tıkla → o ana atla. Metin, zamanlama, satır ekleme/silme, bul-değiştir, içe aktarma ve yeni transkripsiyon buraya düşer.</span>
+    </div>
+    <div id="history-list"></div>
   </div>
 
   <!-- ===================== AYARLAR ===================== -->

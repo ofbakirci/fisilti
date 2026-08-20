@@ -169,6 +169,94 @@
     }
   }
 
+  /* ================= geçmiş (geri al / ileri al) ================= */
+  var HIST_MAX = 50;
+  var H = { undo: [], redo: [] }; // undo[i].snap = o işlemden ÖNCEKİ durum
+
+  function historyMark(label) {
+    H.undo.push({ label: label, at: Date.now(), snap: JSON.stringify(S.segments) });
+    if (H.undo.length > HIST_MAX) H.undo.shift();
+    H.redo.length = 0;
+    renderHistory();
+  }
+  function restoreSnap(snap) {
+    try { S.segments = JSON.parse(snap); } catch (e) { return false; }
+    renderTranscript();
+    persistTranscript();
+    updateCaptionStats();
+    if (S.search.q) runSearch();
+    return true;
+  }
+  function historyUndo(silent) {
+    if (!H.undo.length) { if (!silent) status('Geri alınacak bir şey yok.', ''); return false; }
+    var e = H.undo.pop();
+    H.redo.push({ label: e.label, at: e.at, snap: JSON.stringify(S.segments) });
+    restoreSnap(e.snap);
+    renderHistory();
+    if (!silent) status('Geri alındı: ' + e.label, 'ok');
+    return true;
+  }
+  function historyRedo(silent) {
+    if (!H.redo.length) { if (!silent) status('İleri alınacak bir şey yok.', ''); return false; }
+    var e = H.redo.pop();
+    H.undo.push({ label: e.label, at: e.at, snap: JSON.stringify(S.segments) });
+    restoreSnap(e.snap);
+    renderHistory();
+    if (!silent) status('İleri alındı: ' + e.label, 'ok');
+    return true;
+  }
+  function fmtClock(ts) {
+    var d = new Date(ts);
+    function p(n) { return (n < 10 ? '0' : '') + n; }
+    return p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+  }
+  function renderHistory() {
+    var list = $('history-list');
+    if (!list) return;
+    if (!H.undo.length && !H.redo.length) {
+      list.innerHTML = '<div class="empty">Henüz düzenleme yok.<br><span class="hint">' +
+        'Metin, zamanlama, satır ekleme/silme, bul-değiştir ve içe aktarma buraya düşer.<br>' +
+        '⌘Z geri alır, ⇧⌘Z ileri alır; satıra tıklayınca o ana atlanır.</span></div>';
+      return;
+    }
+    var rows = [];
+    // gelecek (ileri alınabilecekler): en uzak üstte
+    for (var r = 0; r < H.redo.length; r++) {
+      rows.push('<div class="hist-item future" data-redo="' + (H.redo.length - r) + '">' +
+        '<span class="hist-time">' + fmtClock(H.redo[r].at) + '</span>' +
+        '<span>' + escapeHtml(H.redo[r].label) + '</span></div>');
+    }
+    rows.push('<div class="hist-now">● şu an — ' + S.segments.length + ' segment</div>');
+    // geçmiş: en yenisi üstte; tıklayınca oraya dek geri alınır
+    for (var u = H.undo.length - 1; u >= 0; u--) {
+      rows.push('<div class="hist-item" data-undo="' + (H.undo.length - u) + '">' +
+        '<span class="hist-time">' + fmtClock(H.undo[u].at) + '</span>' +
+        '<span>' + escapeHtml(H.undo[u].label) + '</span></div>');
+    }
+    list.innerHTML = rows.join('');
+  }
+  function wireHistory() {
+    $('btn-undo').addEventListener('click', function () { historyUndo(); });
+    $('btn-redo').addEventListener('click', function () { historyRedo(); });
+    $('history-list').addEventListener('click', function (ev) {
+      var el = ev.target.closest('.hist-item');
+      if (!el) return;
+      var n = +el.getAttribute('data-undo') || 0;
+      var m = +el.getAttribute('data-redo') || 0;
+      var steps = 0;
+      while (n-- > 0 && historyUndo(true)) steps++;
+      while (m-- > 0 && historyRedo(true)) steps++;
+      if (steps) status(steps + ' adım atlandı.', 'ok');
+    });
+    document.addEventListener('keydown', function (ev) {
+      if (!(ev.metaKey || ev.ctrlKey) || (ev.key !== 'z' && ev.key !== 'Z')) return;
+      var t = ev.target; // yazı yazarken native undo bozulmasın
+      if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+      ev.preventDefault();
+      if (ev.shiftKey) historyRedo(); else historyUndo();
+    });
+  }
+
   /* ================= transkript görünümü ================= */
   function renderTranscript() {
     var box = $('transcript');
@@ -345,10 +433,12 @@
       var newText = textEl.textContent.trim();
       if (seg && !newText) {
         // boş bırakılan satır silinir (yeni eklenen satırdan vazgeçme dahil)
+        historyMark('Satır silme: "' + seg.text.slice(0, 28) + (seg.text.length > 28 ? '…' : '') + '"');
         S.segments.splice(i, 1);
         persistTranscript();
         status('Satır silindi.', '');
       } else if (seg && newText !== seg.text) {
+        historyMark('Metin: "' + newText.slice(0, 28) + (newText.length > 28 ? '…' : '') + '"');
         setSegmentText(i, newText);
         persistTranscript();
       }
@@ -430,6 +520,7 @@
   function applySegTime(i, t0, t1) {
     var seg = S.segments[i];
     if (!seg) return;
+    historyMark('Zamanlama: ' + fmtTc(seg.t0) + ' → ' + fmtTc(t0));
     var old0 = seg.t0, old1 = seg.t1;
     if (seg.words && seg.words.length && old1 > old0) {
       // kelime zamanlarını yeni aralığa oransal taşı
@@ -489,6 +580,7 @@
   }
 
   function insertSegment(at, t0, t1) {
+    historyMark('Satır ekleme: ' + fmtTc(t0));
     S.segments.splice(at, 0, { t0: t0, t1: t1, text: '', words: null });
     renderTranscript();
     var el = $('transcript').querySelector('.seg[data-i="' + at + '"]');
@@ -614,6 +706,7 @@
     var rep = $('replace-box').value;
     if (!q) { status('Önce aranacak kelimeyi yaz.', 'error'); return; }
     if (!indices.length) { status('Eşleşme yok.', 'error'); return; }
+    historyMark('Bul-değiştir: "' + q + '" → "' + rep + '"');
     var undo = [], total = 0;
     indices.forEach(function (i) {
       var seg = S.segments[i];
@@ -625,7 +718,7 @@
       setSegmentText(i, t);
       total += r.n;
     });
-    if (!undo.length) { status('Değişen bir şey yok.', 'error'); return; }
+    if (!undo.length) { H.undo.pop(); renderHistory(); status('Değişen bir şey yok.', 'error'); return; }
     S.replaceUndo = undo;
     persistTranscript();
     runSearch(); // yeniden tarar, vurguları ve sayacı tazeler
@@ -709,6 +802,7 @@
         if (!res.ok) { setBusy(false); status('Ses dışa aktarılamadı: ' + res.error, 'error'); return; }
 
         S.offsetSec = res.offsetSec || 0;
+        if (S.segments.length) historyMark('Yeni transkripsiyon (öncekinin yerine)');
         S.segments = [];
         S.energy = null; // yeni transkripsiyon — eski dalga formu geçersiz
         S.liveMode = true;
@@ -828,6 +922,121 @@
       karaokeColor: $('st-karaoke-color').value
     };
   }
+  /* ================= stil kütüphanesi ================= */
+  var STYLE_PRESETS = [
+    { name: 'Klasik', style: { fontFamily: 'Helvetica Neue', fontSizePct: 4.2, textColor: '#FFFFFF', bold: true, italic: false, uppercase: false, outlineEnabled: true, outlineColor: '#000000', outlineWidth: 2, backgroundEnabled: false, backgroundColor: '#000000', backgroundAlpha: 0.75, position: 'bottom', marginVPct: 8, karaoke: false, karaokeColor: '#FFD400' } },
+    { name: 'Kutulu', style: { fontFamily: 'Helvetica Neue', fontSizePct: 4.2, textColor: '#FFFFFF', bold: true, italic: false, uppercase: false, outlineEnabled: false, outlineColor: '#000000', outlineWidth: 0, backgroundEnabled: true, backgroundColor: '#000000', backgroundAlpha: 0.75, position: 'bottom', marginVPct: 8, karaoke: false, karaokeColor: '#FFD400' } },
+    { name: 'Beyaz Kutu', style: { fontFamily: 'Helvetica Neue', fontSizePct: 4.1, textColor: '#000000', bold: true, italic: false, uppercase: false, outlineEnabled: false, outlineColor: '#000000', outlineWidth: 0, backgroundEnabled: true, backgroundColor: '#FFFFFF', backgroundAlpha: 1, position: 'bottom', marginVPct: 10, karaoke: false, karaokeColor: '#B400B4' } },
+    { name: 'Sosyal', style: { fontFamily: 'Impact', fontSizePct: 5.5, textColor: '#FFFFFF', bold: false, italic: false, uppercase: true, outlineEnabled: true, outlineColor: '#000000', outlineWidth: 3, backgroundEnabled: false, backgroundColor: '#000000', backgroundAlpha: 0.75, position: 'bottom', marginVPct: 18, karaoke: true, karaokeColor: '#FFD400' } },
+    { name: 'Sarı Zemin', style: { fontFamily: 'Helvetica Neue', fontSizePct: 4.1, textColor: '#000000', bold: true, italic: false, uppercase: false, outlineEnabled: false, outlineColor: '#000000', outlineWidth: 0, backgroundEnabled: true, backgroundColor: '#FFD400', backgroundAlpha: 1, position: 'bottom', marginVPct: 10, karaoke: false, karaokeColor: '#B400B4' } },
+    { name: 'Zarif', style: { fontFamily: 'Avenir Next', fontSizePct: 3.6, textColor: '#FFFFFF', bold: false, italic: false, uppercase: false, outlineEnabled: false, outlineColor: '#000000', outlineWidth: 0, backgroundEnabled: true, backgroundColor: '#000000', backgroundAlpha: 0.55, position: 'bottom', marginVPct: 6, karaoke: false, karaokeColor: '#FFD400' } }
+  ];
+  function styleLibFile() { return W.pathx.join(W.APP_DIR, 'styles.json'); }
+  function loadUserStyles() {
+    try {
+      var d = W.readJsonSafe(styleLibFile());
+      return (d && d.styles && d.styles.length) ? d.styles : [];
+    } catch (e) { return []; }
+  }
+  function saveUserStyles(list) {
+    try { W.writeJson(styleLibFile(), { fisiltiStyles: 1, styles: list }); } catch (e) {}
+  }
+  function styleKey(st) {
+    // alan sırasından bağımsız karşılaştırma anahtarı
+    return ['fontFamily', 'fontSizePct', 'textColor', 'bold', 'italic', 'uppercase',
+      'outlineEnabled', 'outlineColor', 'outlineWidth', 'backgroundEnabled', 'backgroundColor',
+      'backgroundAlpha', 'position', 'marginVPct', 'karaoke', 'karaokeColor']
+      .map(function (k) { return String(st && st[k]).toLocaleLowerCase(); }).join('|');
+  }
+  function tileDemoHtml(st) {
+    var css = 'font-family:"' + st.fontFamily + '",sans-serif;color:' + st.textColor + ';' +
+      'font-weight:' + (st.bold ? 700 : 400) + ';font-style:' + (st.italic ? 'italic' : 'normal') + ';';
+    if (st.outlineEnabled && st.outlineWidth > 0) {
+      css += 'text-shadow:-1px 0 ' + st.outlineColor + ',1px 0 ' + st.outlineColor +
+             ',0 -1px ' + st.outlineColor + ',0 1px ' + st.outlineColor + ';';
+    }
+    if (st.backgroundEnabled) {
+      var m = /^#?(..)(..)(..)$/.exec(st.backgroundColor || '');
+      if (m) css += 'background:rgba(' + parseInt(m[1], 16) + ',' + parseInt(m[2], 16) + ',' +
+        parseInt(m[3], 16) + ',' + (st.backgroundAlpha != null ? st.backgroundAlpha : 1) + ');';
+    }
+    var a = st.karaoke ? "<i style='font-style:inherit;color:" + st.karaokeColor + "'>A</i>" : 'A';
+    // style attribute'u tek tırnakla: font adındaki çift tırnak attribute'u kapatmasın
+    return "<span style=\"" + css.replace(/"/g, "'") + "\">" + a + 'a</span>';
+  }
+  function renderStyleLibrary() {
+    var box = $('style-lib');
+    if (!box) return;
+    var user = loadUserStyles();
+    var curKey = styleKey(readStyle());
+    var html = '';
+    STYLE_PRESETS.forEach(function (p, i) {
+      html += '<div class="style-tile' + (styleKey(p.style) === curKey ? ' active' : '') +
+        '" data-kind="preset" data-i="' + i + '" title="' + p.name + '">' +
+        '<div class="demo">' + tileDemoHtml(p.style) + '</div><div class="nm">' + p.name + '</div></div>';
+    });
+    user.forEach(function (u, i) {
+      html += '<div class="style-tile' + (styleKey(u.style) === curKey ? ' active' : '') +
+        '" data-kind="user" data-i="' + i + '" title="' + u.name + '">' +
+        '<div class="demo">' + tileDemoHtml(u.style) + '</div><div class="nm">' + escapeHtml(u.name) + '</div>' +
+        '<div class="del" title="Sil">×</div></div>';
+    });
+    box.innerHTML = html;
+  }
+  function updateLibActive() {
+    var box = $('style-lib');
+    if (!box) return;
+    var user = loadUserStyles();
+    var curKey = styleKey(readStyle());
+    box.querySelectorAll('.style-tile').forEach(function (el) {
+      var st = el.getAttribute('data-kind') === 'preset' ?
+        STYLE_PRESETS[+el.getAttribute('data-i')].style :
+        (user[+el.getAttribute('data-i')] || {}).style;
+      el.classList.toggle('active', !!st && styleKey(st) === curKey);
+    });
+  }
+  function applyLibStyle(st) {
+    S.settings.style = JSON.parse(JSON.stringify(st));
+    restoreStyleInputs();
+    updatePreview();
+    updateCaptionStats();
+    saveSettings();
+    renderStyleLibrary();
+  }
+  function importStylesFile() {
+    var paths = null;
+    try {
+      var res = window.cep.fs.showOpenDialogEx(false, false, 'Stil dosyası aç (JSON)', '', ['json']);
+      paths = res && res.data;
+    } catch (e) {}
+    if (!paths || !paths.length) return;
+    var text = W.readTextFile(paths[0]);
+    var data = null;
+    try { data = JSON.parse(text); } catch (e2) {}
+    var incoming = data ? (data.styles || (data.style ? [data] : null)) : null;
+    if (!incoming || !incoming.length) { status('Geçerli stil bulunamadı (Fısıltı stil JSON\'u bekleniyor).', 'error'); return; }
+    var user = loadUserStyles(), names = {};
+    user.forEach(function (u) { names[u.name] = 1; });
+    var added = 0;
+    incoming.forEach(function (it) {
+      if (!it || !it.style || !it.style.fontFamily) return;
+      var nm = String(it.name || 'Stil').slice(0, 40);
+      while (names[nm]) nm = nm.replace(/ \(\d+\)$/, '') + ' (' + (++names.__c || (names.__c = 2)) + ')';
+      names[nm] = 1;
+      user.push({ name: nm, style: it.style });
+      added++;
+    });
+    if (!added) { status('İçe aktarılacak stil yok.', 'error'); return; }
+    saveUserStyles(user);
+    renderStyleLibrary();
+    status(added + ' stil içe aktarıldı.', 'ok');
+  }
+  function exportStylesFile() {
+    var user = loadUserStyles();
+    var payload = user.length ? user : [{ name: 'Stilim', style: readStyle() }];
+    saveAs('fisilti-stiller.json', JSON.stringify({ fisiltiStyles: 1, styles: payload }, null, 2), false);
+  }
+
   function readCapOpts() {
     return {
       wordMode: $('cap-mode').value === 'word',
@@ -949,6 +1158,7 @@
     }).join('<br>');
     cap.innerHTML = html;
     $('preview-meta').textContent = seq && seq.width ? seq.width + '×' + seq.height + ' · yazı ' + Math.round(seq.height * st.fontSizePct / 100) + 'px' : '';
+    try { updateLibActive(); } catch (eLib) {}
   }
 
   function ensureBlocksOrWarn() {
@@ -1161,6 +1371,7 @@
     if (!msSegs.length) { status('Dosyada altyazı bulunamadı (SRT/VTT bekleniyor).', 'error'); return; }
     if (S.segments.length && !window.confirm('Paneldeki ' + S.segments.length + ' segmentin yerine ' +
         msSegs.length + ' segment içe aktarılacak. Devam?')) return;
+    historyMark('İçe aktarma: ' + paths[0].split('/').pop());
     S.segments = msSegs.map(function (m) {
       var seg = { t0: m.t0 / 1000, t1: m.t1 / 1000, text: m.text, words: null };
       var est = C.estimateWords({ t0: m.t0, t1: m.t1, text: m.text });
@@ -1262,6 +1473,7 @@
     });
     if (pageId === 'models-page') renderModels();
     if (pageId === 'caption-page') { updatePreview(); updateCaptionStats(); }
+    if (pageId === 'history-page') renderHistory();
   }
 
   function wireSettings() {
@@ -1552,6 +1764,7 @@
     restoreStyleInputs();
     wireTranscript();
     wireTimeline();
+    wireHistory();
     wireModels();
     wireSettings();
     wireUpdate();
@@ -1573,6 +1786,50 @@
     $('btn-add-markers').addEventListener('click', addMarkers);
     $('btn-make-captions').addEventListener('click', addCaptionTrack);
     $('btn-style-to-premiere').addEventListener('click', saveStyleToPremiere);
+    $('style-lib').addEventListener('click', function (ev) {
+      var tile = ev.target.closest('.style-tile');
+      if (!tile) return;
+      var kind = tile.getAttribute('data-kind'), i = +tile.getAttribute('data-i');
+      if (ev.target.classList.contains('del')) {
+        var user = loadUserStyles();
+        if (user[i] && window.confirm('"' + user[i].name + '" stili silinsin mi?')) {
+          user.splice(i, 1); saveUserStyles(user); renderStyleLibrary();
+        }
+        return;
+      }
+      var st = kind === 'preset' ? STYLE_PRESETS[i].style : (loadUserStyles()[i] || {}).style;
+      if (st) { applyLibStyle(st); status('Stil uygulandı.', 'ok'); }
+    });
+    $('btn-style-save').addEventListener('click', function () {
+      $('style-save-row').style.display = '';
+      $('style-save-name').value = '';
+      $('style-save-name').focus();
+    });
+    $('btn-style-save-cancel').addEventListener('click', function () {
+      $('style-save-row').style.display = 'none';
+    });
+    function commitStyleSave() {
+      var nm = $('style-save-name').value.trim().slice(0, 40);
+      if (!nm) { $('style-save-name').focus(); return; }
+      var user = loadUserStyles();
+      var idx = user.findIndex(function (u) { return u.name === nm; });
+      if (idx >= 0) {
+        if (!window.confirm('"' + nm + '" zaten var. Üzerine yazılsın mı?')) return;
+        user[idx] = { name: nm, style: readStyle() };
+      } else user.push({ name: nm, style: readStyle() });
+      saveUserStyles(user);
+      $('style-save-row').style.display = 'none';
+      renderStyleLibrary();
+      status('Stil kaydedildi: ' + nm, 'ok');
+    }
+    $('btn-style-save-ok').addEventListener('click', commitStyleSave);
+    $('style-save-name').addEventListener('keydown', function (ev) {
+      if (ev.key === 'Enter') commitStyleSave();
+      if (ev.key === 'Escape') $('style-save-row').style.display = 'none';
+    });
+    $('btn-style-import').addEventListener('click', importStylesFile);
+    $('btn-style-export').addEventListener('click', exportStylesFile);
+    renderStyleLibrary();
     $('btn-make-overlay').addEventListener('click', addOverlay);
     $('btn-import-transcript').addEventListener('click', importTranscript);
     $('btn-export-srt').addEventListener('click', function () { exportFormat('srt'); });
@@ -1643,7 +1900,7 @@
   // localhost:8090 debug konsolu için küçük kanca (üretimde zararsız)
   window.__fisilti = { S: S, renderTranscript: renderTranscript, runSearch: runSearch,
     replaceCurrent: replaceCurrent, replaceAll: replaceAll, replaceUndo: replaceUndo,
-    wireColorPickers: wireColorPickers };
+    wireColorPickers: wireColorPickers, renderStyleLibrary: renderStyleLibrary };
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();

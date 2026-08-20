@@ -33,6 +33,9 @@ Dakika ücreti yok, abonelik yok, buluta giden ses yok.
 - **Sözlük** (Ayarlar): özel isim ve terimleri virgülle yaz, Whisper'a `--prompt` olarak gider; yanlış duyma baştan azalır
 - **Konuşma hizalama**: Whisper'ın erken başlattığı altyazılar ses enerjisine göre gerçek konuşma başına çekilir
 - **Zaman kaydırma**: tüm altyazıları ± saniye kaydır (Altyazı & Stil > Bölümleme)
+- **Geri al / ileri al + Geçmiş sekmesi**: her düzenleme (metin, zamanlama, satır ekleme/silme,
+  bul-değiştir, içe aktarma, yeni transkripsiyon) geçmişe düşer; ⌘Z / ⇧⌘Z ya da Geçmiş
+  sekmesinden herhangi bir ana tek tıkla dönülür (50 adım)
 - Transkript sequence başına otomatik saklanır; panel kapansa da kaybolmaz
 - **İçe aktar**: hazır SRT/VTT dosyasını transkript olarak yükle, düzenle, tekrar üret
 - **Stili Premiere'e kaydet**: paneldeki stil Premiere metin stiline çevrilir (yerel stiller + proje); caption track'e Track Style menüsünden tek tıkla uygulanır
