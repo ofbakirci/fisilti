@@ -1182,7 +1182,11 @@
         $('update-info').textContent = auto ? '—' : 'Denetlenemedi — ağ bağlantısını kontrol et.';
         return;
       }
-      if (res.newer) {
+      if (res.newer && W.isDevInstall()) {
+        // dev kurulum: reddedecek düğme göstermenin anlamı yok
+        $('update-info').textContent = 'Yeni sürüm: ' + res.latest + ' — geliştirici kurulumu, git pull ile güncelle.';
+        $('btn-do-update').style.display = 'none';
+      } else if (res.newer) {
         S.pendingUpdate = res;
         $('update-info').textContent = 'Yeni sürüm var: ' + res.latest + ' (kurulu: ' + res.current + ')';
         $('btn-do-update').style.display = '';

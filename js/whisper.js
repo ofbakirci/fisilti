@@ -276,18 +276,37 @@ window.FisiltiWhisper = (function () {
       } catch (e) { cb(null); }
     });
   }
+  // Bu klasör gerçekten bizim eklentimiz mi? Klasör ADI güvenilmez — ZXP
+  // kurucular bundle ID yerine başka ad verebiliyor; içerideki manifest'e bak.
+  function isOwnExtensionDir(dir) {
+    try {
+      var xml = fs.readFileSync(path.join(dir, 'CSXS', 'manifest.xml'), 'utf8');
+      return xml.indexOf('com.ofb.fisilti') !== -1;
+    } catch (e) { return false; }
+  }
+  // Geliştirici kurulumu mu? (symlink ya da doğrudan repo'dan koşum — .git var)
+  // ZXP kurulumlarında .git yoktur (package.sh dışlar), symlink de olmaz.
+  function isDevInstall() {
+    try {
+      if (!EXT_DIR) return false;
+      if (fs.lstatSync(EXT_DIR).isSymbolicLink()) return true;
+      return fs.existsSync(path.join(EXT_DIR, '.git'));
+    } catch (e) { return false; }
+  }
   function selfUpdate(url, cbs) {
     ensureDirs();
     cbs = cbs || {};
     function fail(msg) { if (cbs.onError) cbs.onError(msg); return null; }
-    // rsync --delete hedefi eklenti klasörü olmalı — başka bir yolu asla silme
-    if (!EXT_DIR || EXT_DIR.indexOf('com.ofb.fisilti') === -1) {
+    // rsync --delete hedefi bizim eklenti klasörümüz olmalı — başka bir yolu asla silme.
+    // Sahiplik klasör adından değil, içindeki manifest'ten doğrulanır (kurucular
+    // klasöre başka ad verebiliyor).
+    if (!EXT_DIR || !isOwnExtensionDir(EXT_DIR)) {
+      return fail('Eklenti klasörü doğrulanamadı — zxp\'yi elle kur.');
+    }
+    if (isDevInstall()) {
       return fail('Geliştirici kurulumu — panel kendini güncellemez, git pull kullan.');
     }
     try {
-      if (fs.lstatSync(EXT_DIR).isSymbolicLink()) {
-        return fail('Geliştirici kurulumu (symlink) — git pull ile güncelle.');
-      }
       fs.accessSync(EXT_DIR, fs.constants.W_OK);
     } catch (e) {
       return fail('Eklenti klasörü yazılabilir değil (yönetici kurulumu?) — zxp\'yi elle kur.');
@@ -595,6 +614,7 @@ window.FisiltiWhisper = (function () {
     downloadModel: downloadModel, deleteModel: deleteModel,
     detectWhisper: detectWhisper, detectFfmpeg: detectFfmpeg, downloadFfmpeg: downloadFfmpeg,
     currentVersion: currentVersion, checkUpdate: checkUpdate, selfUpdate: selfUpdate,
+    isDevInstall: isDevInstall,
     pickColorNative: pickColorNative,
     transcribe: transcribe, renderOverlay: renderOverlay, wavRms: wavRms,
     writeFile: writeFile, readJsonSafe: readJsonSafe, writeJson: writeJson,
