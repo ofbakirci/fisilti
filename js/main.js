@@ -774,7 +774,7 @@
     W.writeFile(p, srt, true); // UTF-8 BOM — Premiere Türkçe karakterler için ister
     status('Caption track ekleniyor…');
     callHost('importSrtAsCaptions', { srtPath: p, startAtSec: 0 }, function (res) {
-      if (res.ok) status('Caption track eklendi ✓ Stilini Essential Graphics > Track Style ile verebilirsin.', 'ok');
+      if (res.ok) status('Caption track eklendi ✓ Stil: caption\'ı seç → Özellikler (Properties) panelinde Track Style.', 'ok');
       else status('Caption track eklenemedi: ' + res.error, 'error');
     });
   }
