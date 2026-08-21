@@ -592,12 +592,13 @@
     return sec;
   }
   function fmtTc(sec) {
-    sec = Math.max(0, sec);
-    var h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60);
-    var s = Math.round((sec % 60) * 10) / 10;
-    var sTxt = (s < 10 ? '0' : '') + s.toFixed(1);
+    // ms tabanında hesap: kaynak veri ms hassasiyetinde, float gürültüsü ve
+    // saniye taşması (59.9996 → "60.000") burada temizlenir
+    var ms = Math.max(0, Math.round(sec * 1000));
+    var h = Math.floor(ms / 3600000), m = Math.floor(ms / 60000) % 60;
+    var s = Math.floor(ms / 1000) % 60, r = ms % 1000;
     function p(n) { return (n < 10 ? '0' : '') + n; }
-    return (h ? h + ':' + p(m) : String(m)) + ':' + sTxt;
+    return (h ? h + ':' + p(m) : String(m)) + ':' + p(s) + '.' + String(r + 1000).slice(1);
   }
 
   // Yalnız BU satırın zamanını değiştirir — diğer satırlar yerinde kalır

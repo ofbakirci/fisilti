@@ -235,7 +235,7 @@ label.field > span { min-width: 0; }
 /* satır içi zaman düzenleme */
 .seg-time.tc-edit { width: auto; display: flex; gap: 3px; padding-top: 0; }
 .tc-in {
-  width: 58px;
+  width: 72px;
   background: var(--bg-input); color: var(--text);
   border: 1px solid var(--accent); border-radius: 3px;
   font-family: var(--font); font-size: 10px; padding: 2px 3px;
