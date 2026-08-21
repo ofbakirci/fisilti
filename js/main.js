@@ -148,24 +148,101 @@
     });
   }
 
-  /* ================= transkript kalıcılığı ================= */
-  function transcriptFile(seqId) { return W.pathx.join(W.TRANSCRIPTS_DIR, seqId.replace(/[^\w-]/g, '_') + '.json'); }
-  // seqIdOverride: transkripsiyon sırasında sequence değişirse kayıt yine de
-  // işin BAŞLADIĞI sequence'ın dosyasına gider (yanlış dosyayı ezme koruması)
-  function persistTranscript(seqIdOverride) {
+  /* ================= transkript kalıcılığı ================= *
+   * Sequence başına önbellek: <proje dizini>/Fısıltı-OverlaySRT/cache/<seqId>.json —
+   * projeyle birlikte taşınır, makine/panel yeniden başlasa da kalır.
+   * Proje kaydedilmemişse (yol çözülemiyorsa) localStorage'a düşer; proje
+   * kaydedilip yol çözülür çözülmez içerik otomatik olarak dosyaya taşınır.
+   * 1.0.16 ve öncesinde kayıtlar APP_DIR/transcripts/ altındaydı — eski kayıtlar
+   * kaybolmasın diye orası da son çare olarak okunur (ve bulununca yeni yere taşınır).
+   */
+  function legacyTranscriptFile(seqId) { return W.pathx.join(W.TRANSCRIPTS_DIR, seqId.replace(/[^\w-]/g, '_') + '.json'); }
+  function transcriptCacheDir() {
+    var base = projectAssetDir();
+    if (!base) return null;
+    var dir = W.pathx.join(base, 'cache');
+    return W.ensureDir(dir) ? dir : null;
+  }
+  function transcriptCacheFile(seqId) {
+    var dir = transcriptCacheDir();
+    return dir ? W.pathx.join(dir, seqId.replace(/[^\w-]/g, '_') + '.json') : null;
+  }
+  function localCacheKey(seqId) { return 'fisilti.transcriptCache.' + seqId; }
+
+  function saveTranscriptNow(seqIdOverride) {
     var id = seqIdOverride || (S.env && S.env.seq && S.env.seq.id);
     if (!id) return;
     // boş liste de yazılır — son satırın silinmesi kalıcı olmalı
-    W.writeJson(transcriptFile(id), { segments: S.segments, savedAt: Date.now(), energy: S.energy || undefined });
+    var payload = { segments: S.segments, savedAt: Date.now(), energy: S.energy || undefined };
+    var file = transcriptCacheFile(id);
+    if (file) {
+      W.writeJson(file, payload);
+      try { window.localStorage.removeItem(localCacheKey(id)); } catch (eLs) {}
+    } else {
+      // proje kaydedilmemiş — kalıcı yol çözülene kadar geçici olarak localStorage
+      try { window.localStorage.setItem(localCacheKey(id), JSON.stringify(payload)); } catch (eLs2) {}
+    }
+  }
+  var persistDebounceTimer = null;
+  // seqIdOverride verilirse (transkripsiyon biter bitmez, ya da sequence değişiminde
+  // eskisi için) beklemeden hemen kaydeder; aksi halde düzenlemeler ~1sn debounce'lanır
+  // (ör. sürükleyerek zamanlama değiştirirken her karede diske yazmamak için).
+  function persistTranscript(seqIdOverride) {
+    if (seqIdOverride) {
+      clearTimeout(persistDebounceTimer);
+      persistDebounceTimer = null;
+      saveTranscriptNow(seqIdOverride);
+      return;
+    }
+    clearTimeout(persistDebounceTimer);
+    persistDebounceTimer = setTimeout(function () {
+      persistDebounceTimer = null;
+      saveTranscriptNow();
+    }, 1000);
+  }
+  // Bekleyen debounce'lı kaydı hemen yazar — sequence değişimi ya da panel kapanışı
+  // gibi anlarda son ~1sn'lik düzenlemenin kaybolmaması için. seqIdOverride, sequence
+  // değişiminde S.env çoktan YENİ sequence'a geçmiş olabileceğinden verilir (eskisi kullanılır).
+  function flushPendingSave(seqIdOverride) {
+    if (!persistDebounceTimer) return;
+    clearTimeout(persistDebounceTimer);
+    persistDebounceTimer = null;
+    saveTranscriptNow(seqIdOverride);
+  }
+  function loadTranscriptCache(seqId) {
+    var file = transcriptCacheFile(seqId);
+    if (file) {
+      var data = W.readJsonSafe(file);
+      if (data) return data;
+    }
+    var data2 = null;
+    try {
+      var raw = window.localStorage.getItem(localCacheKey(seqId));
+      if (raw) data2 = JSON.parse(raw);
+    } catch (eLs3) {}
+    var fromLegacy = false;
+    if (!data2) {
+      data2 = W.readJsonSafe(legacyTranscriptFile(seqId));
+      if (data2) fromLegacy = true;
+    }
+    if (!data2) return null;
+    if (file) {
+      // kalıcı yol artık var — localStorage/eski konumdan buraya taşı
+      W.writeJson(file, data2);
+      try { window.localStorage.removeItem(localCacheKey(seqId)); } catch (eLs4) {}
+    } else if (fromLegacy) {
+      try { window.localStorage.setItem(localCacheKey(seqId), JSON.stringify(data2)); } catch (eLs5) {}
+    }
+    return data2;
   }
   function maybeLoadSavedTranscript(seqId) {
     if (S.segments.length || S.liveMode || S.busy) return;
-    var data = W.readJsonSafe(transcriptFile(seqId));
+    var data = loadTranscriptCache(seqId);
     if (data && data.segments && data.segments.length) {
       S.segments = data.segments;
       S.energy = data.energy || null;
       renderTranscript();
-      status(S.segments.length + ' segment (kayıttan yüklendi)', 'ok');
+      status(S.segments.length + ' segment — Önbellekten yüklendi', 'ok');
     }
   }
 
@@ -356,11 +433,19 @@
         if (parts.length !== 2) return;
         if (parts[0] !== lastSeqId) {
           var first = (lastSeqId === null);
+          var prevSeqId = lastSeqId; // eski sequence id — henüz üzerine yazılmadı
           lastSeqId = parts[0];
           // İlk poll'da (panel yeni açıldı) diskten yüklenen transkripti silme;
           // canlı transkripsiyon sürerken de listeye dokunma.
           if (!first && !S.liveMode) {
+            // eski sequence için bekleyen (debounce'lı) kayıt varsa hemen yaz —
+            // yoksa son ~1sn'lik düzenleme sequence değişince kaybolur
+            if (prevSeqId) flushPendingSave(prevSeqId);
             S.segments = [];
+            S.energy = null;
+            // geçmiş (Geçmiş sekmesi) başka sequence'a taşınmaz — eski undo/redo
+            // yeni sequence'ın (önbellekten gelecek) segmentlerine uygulanamaz
+            H.undo.length = 0; H.redo.length = 0; renderHistory();
             renderTranscript();
             refreshEnv();
           }
@@ -1888,6 +1973,7 @@
 
     // kapanışta çocuk süreçleri öldür
     window.addEventListener('beforeunload', function () {
+      flushPendingSave(); // bekleyen ~1sn'lik kaydı panel kapanmadan yaz
       if (S.proc) S.proc.cancel();
       if (S.overlayProc) S.overlayProc.cancel();
       if (S.ffmpegDl) S.ffmpegDl.cancel();
